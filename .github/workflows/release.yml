@@ -1,0 +1,40 @@
+name: Release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: test -z "$(gofmt -l cmd internal)"
+      - run: go vet ./...
+      - run: go test -race ./...
+      - run: shellcheck install.sh scripts/*.sh
+      - run: scripts/build-release.sh "$RELEASE_VERSION"
+        env:
+          RELEASE_VERSION: ${{ github.ref_name }}
+      - name: Test release assets and routing
+        run: |
+          mkdir -p "$RUNNER_TEMP/caddy"
+          GOBIN="$RUNNER_TEMP/caddy" go install github.com/caddyserver/caddy/v2/cmd/caddy@v2.11.2
+          PATH="$RUNNER_TEMP/caddy:$PATH" scripts/integration.sh
+          VERSION="$RELEASE_VERSION" scripts/test-install.sh
+        env:
+          RELEASE_VERSION: ${{ github.ref_name }}
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ github.ref_name }}
+        run: |
+          gh release create "$RELEASE_VERSION" dist/checksums.txt "dist/devstation_${RELEASE_VERSION}_linux_amd64" "dist/devstation_${RELEASE_VERSION}_linux_arm64" --verify-tag --generate-notes

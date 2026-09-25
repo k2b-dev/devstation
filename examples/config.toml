@@ -1,0 +1,6 @@
+# Bind only the private interface intended for previews.
+domain = "dev.example.com"
+listen = "127.0.0.1:8443"
+# Existing certificate covering *.dev.example.com; provision and renew separately.
+certificate = "/absolute/path/to/fullchain.pem"
+key = "/absolute/path/to/privkey.pem"

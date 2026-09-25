@@ -1,0 +1,14 @@
+# User service: ~/.config/systemd/user/devstation-caddy.service
+[Unit]
+Description=Devstation Caddy
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/caddy run --config %h/.config/devstation/state/caddy.json
+Restart=on-failure
+RestartSec=3
+UMask=0077
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target
