@@ -6,6 +6,9 @@ Stable HTTPS URLs for local development servers. A small Linux CLI backed by Cad
 dev expose 3000 --name app
 # https://app.dev.example.com:8443
 
+dev serve ./dist --name docs
+# https://docs.dev.example.com:8443
+
 dev list
 dev unexpose app
 dev update
@@ -48,9 +51,11 @@ manages routes; you manage application startup, DNS, certificate renewal, and ac
 
 ## Everyday Use
 
-`dev expose PORT --name NAME` creates or replaces a route to a local HTTP server.
-Routes persist until `dev unexpose NAME`; removing a route does not stop the app.
-Caddy handles HTTPS and WebSockets.
+`dev expose PORT --name NAME` routes to a local HTTP server. `dev serve PATH
+--name NAME` serves a directory or one file directly with Caddy; a directory
+uses its `index.html` at `/`. Both commands create or replace a persistent
+route. `dev unexpose NAME` removes it. Removing a proxy route does not stop its
+application. Caddy handles HTTPS and WebSockets for proxy routes.
 
 Use `dev list --json` for scripts, `dev version` to check the installed version,
 and `dev update [vX.Y.Z]` to update or pin it. Downloads are checksum-verified;

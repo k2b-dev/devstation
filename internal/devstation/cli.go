@@ -15,6 +15,7 @@ import (
 const help = `devstation — local services behind HTTPS
 
   dev expose PORT --name NAME [--no-reload]
+  dev serve PATH --name NAME [--no-reload]
   dev list [--json]
   dev unexpose NAME [--no-reload]
   dev version
@@ -70,7 +71,7 @@ func Run(args []string, version string, out io.Writer) error {
 			target = args[1]
 		}
 		return release.Update(target, out)
-	case "expose", "unexpose", "list":
+	case "expose", "serve", "unexpose", "list":
 	default:
 		return fmt.Errorf("unknown command %q; run dev --help", args[0])
 	}
@@ -99,7 +100,9 @@ func Run(args []string, version string, out io.Writer) error {
 		}
 		type entry struct {
 			Name string `json:"name"`
-			Port int    `json:"port"`
+			Port int    `json:"port,omitempty"`
+			Path string `json:"path,omitempty"`
+			Kind string `json:"kind,omitempty"`
 			URL  string `json:"url"`
 		}
 		entries := []entry{}
@@ -108,13 +111,17 @@ func Run(args []string, version string, out io.Writer) error {
 			return err
 		}
 		for _, r := range routes {
-			entries = append(entries, entry{r.Name, r.Port, urls[r.Name]})
+			entries = append(entries, entry{r.Name, r.Port, r.Path, r.Kind, urls[r.Name]})
 		}
 		if *asJSON {
 			return json.NewEncoder(out).Encode(entries)
 		}
 		for _, e := range entries {
-			fmt.Fprintf(out, "%s\t127.0.0.1:%d\t%s\n", e.Name, e.Port, e.URL)
+			target := e.Path
+			if e.Kind == "" {
+				target = "127.0.0.1:" + strconv.Itoa(e.Port)
+			}
+			fmt.Fprintf(out, "%s\t%s\t%s\n", e.Name, target, e.URL)
 		}
 		return nil
 	}
@@ -123,7 +130,7 @@ func Run(args []string, version string, out io.Writer) error {
 	}
 	offline := flags.Bool("no-reload", false, "write validated config without reloading Caddy")
 	name := ""
-	if args[0] == "expose" {
+	if args[0] == "expose" || args[0] == "serve" {
 		flags.StringVar(&name, "name", "", "DNS label (required)")
 	} else {
 		name = args[1]
@@ -138,10 +145,31 @@ func Run(args []string, version string, out io.Writer) error {
 		return fmt.Errorf("name must be a lowercase DNS label (1–63 letters, digits or hyphens; no leading/trailing hyphen)")
 	}
 	port := 0
+	path, kind := "", ""
 	if args[0] == "expose" {
 		port, err = strconv.Atoi(args[1])
 		if err != nil || port < 1 || port > 65535 {
 			return fmt.Errorf("port must be between 1 and 65535")
+		}
+	} else if args[0] == "serve" {
+		path, err = filepath.Abs(args[1])
+		if err != nil {
+			return err
+		}
+		path, err = filepath.EvalSymlinks(path)
+		if err != nil {
+			return fmt.Errorf("static path: %w", err)
+		}
+		info, err := os.Stat(path)
+		if err != nil {
+			return fmt.Errorf("static path: %w", err)
+		}
+		if info.IsDir() {
+			kind = "directory"
+		} else if info.Mode().IsRegular() {
+			kind = "file"
+		} else {
+			return fmt.Errorf("static path must be a regular file or directory")
 		}
 	}
 	found := false
@@ -156,15 +184,15 @@ func Run(args []string, version string, out io.Writer) error {
 	if args[0] == "unexpose" && !found {
 		return fmt.Errorf("route %q does not exist", name)
 	}
-	if args[0] == "expose" {
-		next = append(next, Route{name, port})
+	if args[0] == "expose" || args[0] == "serve" {
+		next = append(next, Route{Name: name, Port: port, Path: path, Kind: kind})
 	}
 	if err = apply(c, next, *offline, runCaddy); err != nil {
 		return err
 	}
 	if *offline {
 		fmt.Fprintln(out, "Saved configuration; Caddy has not been reloaded:", c.statePath())
-	} else if args[0] == "expose" {
+	} else if args[0] == "expose" || args[0] == "serve" {
 		fmt.Fprintln(out, c.url(name))
 	} else {
 		fmt.Fprintln(out, "Removed", name)

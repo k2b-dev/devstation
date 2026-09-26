@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -19,6 +20,8 @@ import (
 type Route struct {
 	Name string `json:"name"`
 	Port int    `json:"port"`
+	Path string `json:"path,omitempty"`
+	Kind string `json:"kind,omitempty"`
 }
 type caddyRoute struct {
 	ID       string                `json:"@id,omitempty"`
@@ -30,6 +33,8 @@ type handler struct {
 	Handler    string     `json:"handler"`
 	Upstreams  []upstream `json:"upstreams,omitempty"`
 	StatusCode int        `json:"status_code,omitempty"`
+	Root       string     `json:"root,omitempty"`
+	URI        string     `json:"uri,omitempty"`
 }
 type upstream struct {
 	Dial string `json:"dial"`
@@ -60,7 +65,18 @@ func render(c Config, routes []Route) ([]byte, error) {
 	d.Admin.Config = map[string]bool{"persist": false}
 	s := server{Listen: []string{c.Listen}, TLS: []map[string]any{{}}, AutoHTTPS: map[string]bool{"disable": true}}
 	for _, r := range routes {
-		s.Routes = append(s.Routes, caddyRoute{ID: "devstation-" + r.Name, Match: []map[string][]string{{"host": {r.Name + "." + c.Domain}}}, Handle: []handler{{Handler: "reverse_proxy", Upstreams: []upstream{{Dial: net.JoinHostPort("127.0.0.1", strconv.Itoa(r.Port))}}}}, Terminal: true})
+		var handles []handler
+		switch r.Kind {
+		case "", "proxy":
+			handles = []handler{{Handler: "reverse_proxy", Upstreams: []upstream{{Dial: net.JoinHostPort("127.0.0.1", strconv.Itoa(r.Port))}}}}
+		case "directory":
+			handles = []handler{{Handler: "file_server", Root: r.Path}}
+		case "file":
+			handles = []handler{{Handler: "rewrite", URI: "/" + url.PathEscape(filepath.Base(r.Path))}, {Handler: "file_server", Root: filepath.Dir(r.Path)}}
+		default:
+			return nil, fmt.Errorf("invalid route kind %q", r.Kind)
+		}
+		s.Routes = append(s.Routes, caddyRoute{ID: "devstation-" + r.Name, Match: []map[string][]string{{"host": {r.Name + "." + c.Domain}}}, Handle: handles, Terminal: true})
 	}
 	s.Routes = append(s.Routes, caddyRoute{Handle: []handler{{Handler: "static_response", StatusCode: 404}}, Terminal: true})
 	d.Apps.HTTP.Servers = map[string]server{"devstation": s}
@@ -95,16 +111,40 @@ func readRoutes(path string) ([]Route, error) {
 			return nil, fmt.Errorf("unexpected saved route %q", r.ID)
 		}
 		name := r.ID[len(prefix):]
-		if !labelPattern.MatchString(name) || seen[name] || len(r.Handle) != 1 || r.Handle[0].Handler != "reverse_proxy" || len(r.Handle[0].Upstreams) != 1 {
+		if !labelPattern.MatchString(name) || seen[name] {
 			return nil, fmt.Errorf("invalid saved route %q", name)
 		}
-		host, p, err := net.SplitHostPort(r.Handle[0].Upstreams[0].Dial)
-		port, perr := strconv.Atoi(p)
-		if err != nil || perr != nil || host != "127.0.0.1" || port < 1 || port > 65535 {
-			return nil, fmt.Errorf("invalid saved upstream")
+		entry := Route{Name: name}
+		switch {
+		case len(r.Handle) == 1 && r.Handle[0].Handler == "reverse_proxy" && len(r.Handle[0].Upstreams) == 1:
+			host, p, err := net.SplitHostPort(r.Handle[0].Upstreams[0].Dial)
+			port, perr := strconv.Atoi(p)
+			if err != nil || perr != nil || host != "127.0.0.1" || port < 1 || port > 65535 {
+				return nil, fmt.Errorf("invalid saved upstream")
+			}
+			entry.Port = port
+		case len(r.Handle) == 1 && r.Handle[0].Handler == "file_server":
+			entry.Kind = "directory"
+			entry.Path = r.Handle[0].Root
+		case len(r.Handle) == 2 && r.Handle[0].Handler == "rewrite" && r.Handle[1].Handler == "file_server":
+			entry.Kind = "file"
+			root := r.Handle[1].Root
+			uri, err := url.PathUnescape(r.Handle[0].URI)
+			if err != nil {
+				return nil, fmt.Errorf("invalid saved file URI: %w", err)
+			}
+			if uri == "/" || !strings.HasPrefix(uri, "/") || filepath.Base(uri) != strings.TrimPrefix(uri, "/") {
+				return nil, fmt.Errorf("invalid saved file route %q", name)
+			}
+			entry.Path = filepath.Join(root, strings.TrimPrefix(uri, "/"))
+		default:
+			return nil, fmt.Errorf("invalid saved route %q", name)
+		}
+		if entry.Kind != "" && (!filepath.IsAbs(entry.Path) || filepath.Clean(entry.Path) != entry.Path) {
+			return nil, fmt.Errorf("invalid saved static path")
 		}
 		seen[name] = true
-		routes = append(routes, Route{name, port})
+		routes = append(routes, entry)
 	}
 	sort.Slice(routes, func(i, j int) bool { return routes[i].Name < routes[j].Name })
 	return routes, nil

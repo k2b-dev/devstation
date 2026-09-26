@@ -1,6 +1,6 @@
 ---
 name: devstation
-description: Expose local development servers through an existing Devstation and Caddy setup, inspect routes, and remove previews. Use when a user asks for a named HTTPS preview on a Devstation host.
+description: Expose local development servers or static files through an existing Devstation and Caddy setup, inspect routes, and remove previews. Use when a user asks for a named HTTPS preview on a Devstation host.
 ---
 
 # Devstation
@@ -16,10 +16,20 @@ Start the application using the project's normal process manager, bound to
 dev expose 3000 --name example
 ```
 
+For a directory or one static file, skip the application process and run:
+
+```sh
+dev serve ./dist --name example
+```
+
+Review the full directory before serving it. Dotfiles and symlink targets can
+be reached by anyone with access to the configured listener. Keep the path in
+place: the route survives restarts and Caddy reads files at request time.
+
 The command prints the HTTPS URL after Caddy accepts the reload. Names are single
 lowercase DNS labels. Reusing a name replaces its upstream; inspect existing
 routes before choosing a name. Routes persist until `dev unexpose example`.
-Removing a route does not stop the application.
+Removing a route does not stop a proxied application or delete served files.
 
 Verify both the loopback application and the returned HTTPS URL. Report DNS,
 certificate, upstream, or reachability failures rather than declaring success
@@ -31,7 +41,7 @@ Configuration defaults to `~/.config/devstation/config.toml` (or
 `dev --config /path/config.toml list --json`. Wildcard DNS, TLS renewal, VPN policy,
 and Caddy startup belong to the host setup, not individual previews.
 
-Use only `dev expose`, `dev list`, and `dev unexpose` for routine preview work.
+Use only `dev expose`, `dev serve`, `dev list`, and `dev unexpose` for routine preview work.
 Do not edit generated `state/caddy.json`, operate unrelated Caddy instances, or
 run commands with sudo. `--no-reload` is for initial provisioning only: it writes
 validated configuration but does not make a URL live. A failed update that reports

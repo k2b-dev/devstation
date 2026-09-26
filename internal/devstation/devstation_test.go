@@ -21,12 +21,12 @@ func testConfig(t *testing.T) Config {
 }
 func TestFailedReloadRestoresState(t *testing.T) {
 	c := testConfig(t)
-	old, _ := render(c, []Route{{"first", 3000}})
+	old, _ := render(c, []Route{{Name: "first", Port: 3000}})
 	if err := atomicWrite(c.statePath(), old); err != nil {
 		t.Fatal(err)
 	}
 	reloads := 0
-	err := apply(c, []Route{{"second", 4000}}, false, func(args ...string) error {
+	err := apply(c, []Route{{Name: "second", Port: 4000}}, false, func(args ...string) error {
 		if args[0] == "reload" {
 			reloads++
 			if reloads == 1 {
@@ -45,9 +45,9 @@ func TestFailedReloadRestoresState(t *testing.T) {
 }
 func TestValidationFailureLeavesState(t *testing.T) {
 	c := testConfig(t)
-	old, _ := render(c, []Route{{"first", 3000}})
+	old, _ := render(c, []Route{{Name: "first", Port: 3000}})
 	_ = atomicWrite(c.statePath(), old)
-	err := apply(c, []Route{{"second", 4000}}, false, func(...string) error { return errors.New("invalid cert") })
+	err := apply(c, []Route{{Name: "second", Port: 4000}}, false, func(...string) error { return errors.New("invalid cert") })
 	got, _ := os.ReadFile(c.statePath())
 	if err == nil || !bytes.Equal(old, got) {
 		t.Fatal("validation modified state")
@@ -76,7 +76,7 @@ func TestConfigAndInputValidation(t *testing.T) {
 		}
 	}
 	_ = os.WriteFile(p, []byte(valid), 0600)
-	for _, args := range [][]string{{"expose", "0", "--name", "ok"}, {"expose", "3000", "--name", "../../bad"}, {"expose", "3000", "--name", "a.b"}, {"expose", "3000", "--name", "-bad"}, {"unexpose", "missing"}} {
+	for _, args := range [][]string{{"expose", "0", "--name", "ok"}, {"expose", "3000", "--name", "../../bad"}, {"expose", "3000", "--name", "a.b"}, {"expose", "3000", "--name", "-bad"}, {"serve", "/does-not-exist", "--name", "ok"}, {"serve", "/tmp", "--name", "a.b"}, {"unexpose", "missing"}} {
 		if err := Run(append([]string{"--config", p}, args...), "test", &bytes.Buffer{}); err == nil {
 			t.Fatalf("accepted %v", args)
 		}
@@ -84,7 +84,7 @@ func TestConfigAndInputValidation(t *testing.T) {
 }
 func TestRoutesRoundTrip(t *testing.T) {
 	c := testConfig(t)
-	err := apply(c, []Route{{"z", 4000}, {"a", 3000}}, true, func(...string) error { return nil })
+	err := apply(c, []Route{{Name: "z", Port: 4000}, {Name: "a", Port: 3000}}, true, func(...string) error { return nil })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,6 +98,25 @@ func TestRoutesRoundTrip(t *testing.T) {
 	}
 }
 
+func TestStaticRoutesRoundTrip(t *testing.T) {
+	c := testConfig(t)
+	routes := []Route{
+		{Name: "docs", Kind: "directory", Path: "/srv/site"},
+		{Name: "single", Kind: "file", Path: "/srv/page.html"},
+		{Name: "app", Port: 3000},
+	}
+	if err := apply(c, routes, true, func(...string) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	got, err := readRoutes(c.statePath())
+	if err != nil || len(got) != 3 {
+		t.Fatalf("%v %v", got, err)
+	}
+	if got[0].Name != "app" || got[0].Port != 3000 || got[1].Kind != "directory" || got[1].Path != "/srv/site" || got[2].Kind != "file" || got[2].Path != "/srv/page.html" {
+		t.Fatalf("wrong static routes: %+v", got)
+	}
+}
+
 func TestListShowsSavedURLsAfterConfigEdit(t *testing.T) {
 	c := testConfig(t)
 	configPath := filepath.Join(c.dir, "config.toml")
@@ -106,7 +125,7 @@ func TestListShowsSavedURLsAfterConfigEdit(t *testing.T) {
 	old := c
 	old.dir = filepath.Join(c.dir, "state")
 	_ = os.Mkdir(old.dir, 0700)
-	data, _ := render(old, []Route{{"example", 3000}})
+	data, _ := render(old, []Route{{Name: "example", Port: 3000}})
 	_ = atomicWrite(old.statePath(), data)
 	var output bytes.Buffer
 	if err := Run([]string{"--config", configPath, "list", "--json"}, "test", &output); err != nil {

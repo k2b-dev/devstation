@@ -30,6 +30,11 @@ func TestCaddyIntegration(t *testing.T) {
 		t.Skip("set DEVSTATION_INTEGRATION=1 with caddy on PATH")
 	}
 	c := testConfig(t)
+	configDir := c.dir
+	c.dir = filepath.Join(configDir, "state")
+	if err := os.Mkdir(c.dir, 0700); err != nil {
+		t.Fatal(err)
+	}
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -66,7 +71,7 @@ func TestCaddyIntegration(t *testing.T) {
 	defer backend.Close()
 	_, p, _ := net.SplitHostPort(strings.TrimPrefix(backend.URL, "http://"))
 	port, _ := strconv.Atoi(p)
-	if err = apply(c, []Route{{"first", port}}, true, runCaddy); err != nil {
+	if err = apply(c, []Route{{Name: "first", Port: port}}, true, runCaddy); err != nil {
 		t.Fatal(err)
 	}
 	var log bytes.Buffer
@@ -137,11 +142,42 @@ func TestCaddyIntegration(t *testing.T) {
 	if err != nil || string(upgraded) != "hello-upgrade" {
 		t.Fatalf("upgrade: %q %v", upgraded, err)
 	}
-	if err = apply(c, []Route{{"second", port}}, false, runCaddy); err != nil {
+	if err = apply(c, []Route{{Name: "second", Port: port}}, false, runCaddy); err != nil {
 		t.Fatal(err)
 	}
 	check("first", 404, "")
 	check("second", 200, "backend-one")
+	staticDir := filepath.Join(c.dir, "site")
+	if err := os.Mkdir(staticDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(staticDir, "index.html"), []byte("site-index"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	staticFile := filepath.Join(c.dir, "single file?#%.html")
+	if err := os.WriteFile(staticFile, []byte("single-file"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	withStatic := []Route{{Name: "second", Port: port}, {Name: "site", Kind: "directory", Path: staticDir}, {Name: "single", Kind: "file", Path: staticFile}}
+	if err := apply(c, withStatic, false, runCaddy); err != nil {
+		t.Fatal(err)
+	}
+	check("site", 200, "site-index")
+	check("single", 200, "single-file")
+	check("second", 200, "backend-one")
+	configPath := filepath.Join(configDir, "config.toml")
+	configData := fmt.Sprintf("domain = %q\nlisten = %q\ncertificate = %q\nkey = %q\n", c.Domain, c.Listen, c.Certificate, c.Key)
+	if err := os.WriteFile(configPath, []byte(configData), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := Run([]string{"--config", configPath, "serve", staticFile, "--name", "single"}, "test", io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	check("single", 200, "single-file")
+	parsed, err := readRoutes(c.statePath())
+	if err != nil || len(parsed) != 3 {
+		t.Fatalf("static routes not saved: %v %v", parsed, err)
+	}
 	// Invalid certificate must not break the running route or persisted config.
 	saved, _ := os.ReadFile(c.statePath())
 	bad := c

@@ -110,10 +110,22 @@ renewal reload in `flock ~/.config/devstation/state/lock ...`.
 ## Route Behavior and Recovery
 
 Names are lowercase DNS labels of 1–63 characters. Reusing a name replaces its
-port. Upstreams are always loopback HTTP; Caddy handles TLS and WebSocket upgrades.
-There is no arbitrary upstream URL, Caddy snippet, shell command, or automatic
-route expiration. Docker applications should publish their port on loopback,
+route. `dev expose` upstreams are always loopback HTTP; Caddy handles TLS and
+WebSocket upgrades. Docker applications should publish their port on loopback,
 for example `127.0.0.1:8317:8317`.
+
+`dev serve PATH --name NAME` serves an existing regular file or directory with
+Caddy, without a separate process. The path is resolved to an absolute path and
+saved in the route. Caddy reads the files at request time, so content changes do
+not require another `dev serve`; the path must remain available after a restart.
+A directory serves `index.html` at `/` and does not enable directory listings.
+A single file is served for requests to its host without exposing sibling files.
+Only serve directories whose full contents, including dotfiles and symlink
+targets, are safe for everyone who can reach the listener. `dev list` shows the
+saved path or loopback port. `dev unexpose` removes either kind of route.
+
+There is no arbitrary upstream URL, Caddy snippet, shell command, or automatic
+route expiration.
 
 Routes persist in `state/caddy.json` next to the TOML configuration. Do not edit this
 file directly. A nonblocking file lock prevents concurrent writers. Changes are
