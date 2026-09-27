@@ -1,6 +1,6 @@
 ---
 name: devstation
-description: Expose local development servers or static files through an existing Devstation and Caddy setup, take screenshots of pages in light and dark at several widths, publish screenshots, plans, and HTML mockups as versioned pages, inspect routes, and remove previews. Use when a user asks for a named HTTPS preview on a Devstation host, or wants to see screenshots, a plan, a mockup, or a before/after comparison through a link.
+description: Expose local development servers or static files through an existing Devstation and Caddy setup, take screenshots of pages in light and dark at several widths, publish screenshots, plans, and HTML mockups as versioned pages, read and resolve the comments people pin on published images, inspect routes, and remove previews. Use when a user asks for a named HTTPS preview on a Devstation host, wants to see screenshots, a plan, a mockup, or a before/after comparison through a link, or points to feedback or comments on an artifact.
 ---
 
 # Devstation
