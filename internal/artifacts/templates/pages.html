@@ -51,7 +51,7 @@
 {{if .Dir}}<h2><a href="#{{.ID}}">{{.Dir}}/</a></h2>{{end}}
 {{if .Rows}}<div class="matrix" style="{{.Grid}}">
 <div class="corner"></div>{{range .Columns}}<div class="col">{{.}}</div>{{end}}
-{{range .Rows}}<div class="rowlabel">{{if .Label}}{{.Label}}{{else}}—{{end}}</div>{{range .Cells}}{{template "cell" .}}{{end}}
+{{range .Rows}}<div class="rowlabel"{{if .Caption.Text}} title="{{.Caption.Text}}"{{end}}>{{if .Caption.Title}}<span class="cap">{{.Caption.Title}}</span>{{end}}<span class="label">{{if .Label}}{{.Label}}{{else}}—{{end}}</span></div>{{range .Cells}}{{template "cell" .}}{{end}}
 {{end}}</div>{{end}}
 {{if .Plain}}<div class="plain">{{range .Plain}}{{template "cell" .}}{{end}}</div>{{end}}
 {{if .Other}}<details class="files"{{if lt (len .Other) 12}} open{{end}}><summary>{{len .Other}} other file{{if gt (len .Other) 1}}s{{end}}</summary><ul>{{range .Other}}<li><a href="{{.Href}}">{{.Name}}</a> <span class="muted">{{.Size}}</span></li>{{end}}</ul></details>{{end}}
@@ -59,7 +59,7 @@
 {{end}}
 {{if and (not .Docs) (not .Sections)}}<p class="muted">This version has no files to show.</p>{{end}}
 {{if .HasMedia}}<dialog id="lightbox" class="lightbox" aria-label="Image viewer" data-comments="{{.CommentsHref}}" data-api="{{.CommentsAPI}}" data-version="{{.Version}}">
-<div class="lb-bar"><span class="lb-count"></span><span class="lb-name"></span><span class="lb-meta"></span><span class="lb-zoom"><button type="button" class="lb-zoom-out" aria-label="Zoom out (−)">−</button><button type="button" class="lb-zoom-level" aria-label="Switch between fit and 100% (0)">Fit</button><button type="button" class="lb-zoom-in" aria-label="Zoom in (+)">+</button></span><a class="lb-original" target="_blank" rel="noopener">original</a><button type="button" class="lb-close" aria-label="Close (Esc)">✕</button></div>
+<div class="lb-bar"><span class="lb-count"></span><span class="lb-name"></span><span class="lb-meta"></span><span class="lb-zoom"><button type="button" class="lb-zoom-out" aria-label="Zoom out (−)">−</button><button type="button" class="lb-zoom-level" aria-label="Switch between fit and 100% (0)">Fit</button><button type="button" class="lb-zoom-in" aria-label="Zoom in (+)">+</button></span><a class="lb-original" target="_blank" rel="noopener">original</a><button type="button" class="lb-close" aria-label="Close (Esc)">✕</button><p class="lb-caption" hidden><strong></strong> <span></span></p></div>
 <div class="lb-main">
 <div class="lb-media"><div class="lb-stage"></div></div>
 <aside class="lb-comments" aria-label="Comments">
@@ -77,9 +77,9 @@
 <script>{{lightbox}}</script>{{end}}
 {{template "foot" .}}{{end}}
 
-{{define "cell"}}{{if .Missing}}<div class="cell missing"></div>{{else}}<figure class="cell" id="{{.ID}}" data-name="{{.Name}}"{{if .Row}} data-row="{{.Row}}"{{end}}{{if .Col}} data-col="{{.Col}}"{{end}}{{if .Section}} data-section="{{.Section}}/"{{end}}{{if .Video}} data-video="1"{{end}}>
+{{define "cell"}}{{if .Missing}}<div class="cell missing"></div>{{else}}<figure class="cell" id="{{.ID}}" data-name="{{.Name}}"{{if .Row}} data-row="{{.Row}}"{{end}}{{if .Col}} data-col="{{.Col}}"{{end}}{{if .Section}} data-section="{{.Section}}/"{{end}}{{if .Video}} data-video="1"{{end}}{{if .Caption.Title}} data-title="{{.Caption.Title}}"{{end}}{{if .Caption.Text}} data-text="{{.Caption.Text}}"{{end}}>
 <a class="thumb" href="{{.Href}}">{{if .Video}}<video src="{{.Href}}" muted playsinline preload="metadata"></video>{{else}}<img src="{{.Href}}" alt="{{.Name}}" loading="lazy" decoding="async"{{if .Width}} width="{{.Width}}" height="{{.Height}}"{{end}}>{{end}}</a>
-<figcaption><a class="anchor" href="#{{.ID}}">#</a> <span class="name">{{.Name}}</span>{{range .Attach}} <a href="{{.Href}}">{{.Name}}</a>{{end}}</figcaption>
+<figcaption>{{if and .Caption.Title (not .Row)}}<span class="cap"{{if .Caption.Text}} title="{{.Caption.Text}}"{{end}}>{{.Caption.Title}}</span> {{end}}<a class="anchor" href="#{{.ID}}">#</a> <span class="name">{{.Name}}</span>{{range .Attach}} <a href="{{.Href}}">{{.Name}}</a>{{end}}</figcaption>
 </figure>{{end}}{{end}}
 
 {{define "redirect"}}<!doctype html>

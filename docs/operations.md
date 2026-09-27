@@ -188,6 +188,12 @@ Pages are generated from the files:
   − and + (also the keys, and Ctrl/⌘ with the wheel or a trackpad pinch at the
   pointer) zoom from the fitted size up to 400 %; `0` or the level button
   switches between fitted and 100 %.
+- **Captions:** a `captions.txt` in a folder of images gives its rows (or other
+  images, by name without extension) a short title and at most a sentence,
+  shown next to the row and in the viewer. Blocks are separated by blank lines;
+  the first line is `NAME: Title`, the rest the text. Titles over 60 and texts
+  over 160 characters are cut, names without an image are skipped, and publish
+  warns about both. The file itself is not listed.
 - **Plan:** each Markdown file up to 2 MiB becomes a section, `index.md` or
   `README.md` first, up to 8 MiB per version; the rest are listed as files. GitHub-flavored tables,
   task lists, and strikethrough work; raw HTML is dropped. Heading anchors

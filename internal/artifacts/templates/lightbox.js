@@ -3,7 +3,7 @@
   var box = document.getElementById("lightbox");
   if (!items.length || !box || !box.showModal) return;
   function q(selector) { return box.querySelector(selector); }
-  var stage = q(".lb-stage"), name = q(".lb-name"), meta = q(".lb-meta"), count = q(".lb-count"), original = q(".lb-original");
+  var caption = q(".lb-caption"), stage = q(".lb-stage"), name = q(".lb-name"), meta = q(".lb-meta"), count = q(".lb-count"), original = q(".lb-original");
   var list = q(".lb-list"), form = q(".lb-form"), text = q("textarea"), send = q(".lb-actions button"), note = q(".lb-pin-note"), status = q(".lb-error");
   var version = Number(box.dataset.version), api = box.dataset.api, source = box.dataset.comments;
   var current = 0, comments = [], counts = {}, loaded = false, loadError = "", busy = false, pending = null, active = "";
@@ -261,6 +261,9 @@
     status.textContent = loadError;
     name.textContent = f.dataset.name;
     meta.textContent = [f.dataset.section, f.dataset.row, f.dataset.col].filter(Boolean).join(" · ");
+    caption.hidden = !f.dataset.title;
+    caption.firstChild.textContent = f.dataset.title || "";
+    caption.lastChild.textContent = f.dataset.text || "";
     count.textContent = current + 1 + " / " + items.length;
     original.href = href(f);
     history.replaceState(null, "", "#" + encodeURIComponent(f.id));

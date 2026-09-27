@@ -54,11 +54,13 @@ type cellView struct {
 	Video         bool
 	Width, Height int
 	Attach        []fileLink
+	Caption       caption
 }
 
 type rowView struct {
-	Label string
-	Cells []cellView
+	Label   string
+	Caption caption
+	Cells   []cellView
 }
 
 type sectionView struct {
@@ -106,12 +108,13 @@ const versionPlaceholder = "v/00version00/"
 // page and once for the stable page. Rendering happens before the store lock.
 type docSet struct {
 	version, current []docView
-	skip             map[string]bool // rendered documents and the images they embed
+	skip             map[string]bool               // rendered documents, the images they embed, and captions files
+	captions         map[string]map[string]caption // by directory, then caption key
 	warnings         []string
 }
 
 func prepareDocs(files []File, payload string) (docSet, error) {
-	ds := docSet{skip: map[string]bool{}}
+	ds := docSet{skip: map[string]bool{}, captions: map[string]map[string]caption{}}
 	published := map[string]bool{}
 	for _, f := range files {
 		published[f.Path] = true
@@ -136,7 +139,35 @@ func prepareDocs(files []File, payload string) (docSet, error) {
 		ds.skip[img] = true
 	}
 	ds.warnings = warnings
+	for _, f := range files {
+		if path.Base(f.Path) != captionsFile {
+			continue
+		}
+		dir := dirOf(f.Path)
+		known := map[string]bool{}
+		for _, g := range files {
+			if dirOf(g.Path) == dir && isMedia(g.Path) {
+				known[captionKey(g.Path)] = true
+			}
+		}
+		src, err := os.ReadFile(filepath.Join(payload, filepath.FromSlash(f.Path)))
+		if err != nil {
+			return ds, err
+		}
+		caps, warnings := parseCaptions(f.Path, src, known)
+		ds.captions[dir] = caps
+		ds.warnings = append(ds.warnings, warnings...)
+		ds.skip[f.Path] = true
+	}
 	return ds, nil
+}
+
+// dirOf is the directory of a published path, "" for the version root.
+func dirOf(p string) string {
+	if d := path.Dir(p); d != "." {
+		return d
+	}
+	return ""
 }
 
 // renderVersion renders version k of m. From the stable page (current) the
@@ -174,7 +205,7 @@ func renderVersion(m Meta, k int, current bool, ds docSet) ([]byte, error) {
 		}
 	}
 	for _, s := range layout(v.Files, ds.skip) {
-		sv := sectionFor(s, base)
+		sv := sectionFor(s, base, ds.captions[s.Dir])
 		p.HasMedia = p.HasMedia || len(sv.Rows) > 0 || len(sv.Plain) > 0
 		p.Sections = append(p.Sections, sv)
 	}
@@ -183,7 +214,7 @@ func renderVersion(m Meta, k int, current bool, ds docSet) ([]byte, error) {
 	return buf.Bytes(), err
 }
 
-func sectionFor(s section, base string) sectionView {
+func sectionFor(s section, base string, caps map[string]caption) sectionView {
 	id := s.Dir + "/"
 	if s.Dir == "" {
 		id = "files"
@@ -203,17 +234,17 @@ func sectionFor(s section, base string) sectionView {
 	}
 	out.Grid = template.CSS("grid-template-columns: " + strings.Join(tracks, " "))
 	for _, r := range s.Rows {
-		rv := rowView{Label: r.Label}
+		rv := rowView{Label: r.Label, Caption: caps[r.Label]}
 		for i, c := range r.Cells {
 			cv := cellFor(c, base)
-			cv.Row, cv.Col, cv.Section = r.Label, out.Columns[i], s.Dir
+			cv.Row, cv.Col, cv.Section, cv.Caption = r.Label, out.Columns[i], s.Dir, rv.Caption
 			rv.Cells = append(rv.Cells, cv)
 		}
 		out.Rows = append(out.Rows, rv)
 	}
 	for _, c := range s.Plain {
 		cv := cellFor(c, base)
-		cv.Section = s.Dir
+		cv.Section, cv.Caption = s.Dir, caps[captionKey(c.File.Path)]
 		out.Plain = append(out.Plain, cv)
 	}
 	for _, f := range s.Other {

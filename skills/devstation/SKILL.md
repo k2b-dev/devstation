@@ -88,6 +88,17 @@ Caddy here, not the user's DNS.
   example `login-empty-dark-1440.png`. Theme and width become gallery columns;
   the rest becomes the row. To point at one image, append `#<file path>` to
   the URL; it opens in the page's image viewer.
+- Match the context to the change. A simple change needs 2–4 images and
+  nothing else. For a flow or a complex change, give the order and a little
+  context, and keep it short:
+  - number the motifs in order (`01-list-empty`, `02-dialog-open`);
+  - add a `README.md` with the goal or user story in 2–4 sentences and the
+    steps as a numbered list; it appears above the gallery;
+  - add a `captions.txt` next to the images: per motif a line
+    `01-list-empty: Empty list` (a title of a few words) and at most one
+    sentence below it, blocks separated by blank lines. The title shows next
+    to the row and in the image viewer. Longer titles (60 characters) and
+    texts (160) are cut, and publish warns about names without an image.
 - For before/after, publish the before set, then the after set under the same
   name with the same file names and the same argument shape, and hand on
   `compare_url`. Every publish adds a version.
