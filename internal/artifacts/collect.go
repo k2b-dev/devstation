@@ -55,7 +55,7 @@ func sensitive(rel string) bool {
 	for _, ext := range []string{".gz", ".zst", ".xz", ".bz2"} {
 		base = strings.TrimSuffix(base, ext)
 	}
-	for _, ext := range []string{".env", ".local", ".dump", ".sql", ".sqlite", ".sqlite3", ".db", ".har", ".pem", ".key", ".p12", ".pfx", ".jks", ".keystore", ".kdbx", ".ppk", ".ovpn"} {
+	for _, ext := range []string{".env", ".local", ".dump", ".sql", ".sqlite", ".sqlite3", ".db", ".har", ".pem", ".key", ".p12", ".pfx", ".jks", ".keystore", ".kdbx", ".ppk", ".ovpn", ".cookie"} {
 		if strings.HasSuffix(base, ext) {
 			return true
 		}

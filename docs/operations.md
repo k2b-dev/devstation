@@ -201,7 +201,7 @@ across versions so that before/after pages can pair the files. Directory walks
 skip hidden files and folders and do not follow symlinks; skipped paths are
 reported. A publish fails, listing the files, when a path looks like it holds
 secrets or private data: hidden files and files in a hidden folder given as an
-argument (such as `playwright/.auth`); `.env`, `.local`, `.dump`, `.sql`,
+argument (such as `playwright/.auth`); `.env`, `.cookie`, `.local`, `.dump`, `.sql`,
 `.sqlite`, `.sqlite3`, `.db`, `.har`, `.pem`, `.key`, `.p12`, `.pfx`, `.jks`,
 `.keystore`, `.kdbx`, `.ppk`, and `.ovpn` files, also compressed; `id_rsa*`,
 `id_ecdsa*`, `id_ed25519*`, `*.tfstate*`, `auth.json`, and storage-state
@@ -240,6 +240,65 @@ publish only what everyone who can reach the listener may see.
 
 `dev list --json` shows the `artifacts` route with kind `artifacts`. `dev artifacts
 [PROJECT] --json` lists artifacts with URLs, size, and expiry.
+
+## Screenshots
+
+`dev shot [LABEL=]URL... --out DIR` opens each URL in a local headless Chrome
+or Chromium and writes one PNG per theme and width, `DIR/LABEL-THEME-WIDTH.png`,
+which is the naming the artifact gallery expects. Without `LABEL=`, the label
+comes from the URL path; two URLs with the same label are refused. Take one
+state per label, for example `board-empty=URL` and `board-full=URL`. All
+options apply to every URL of one command.
+
+- **Browser:** `--browser PATH`, `$DEVSTATION_BROWSER`, a Chrome or Chromium on
+  `PATH`, or the highest revision Playwright downloaded to
+  `~/.cache/ms-playwright` (or `$PLAYWRIGHT_BROWSERS_PATH`), preferring its
+  headless shell. Devstation downloads nothing. The browser talks to
+  Devstation over a pipe and opens no port. It gets a temporary profile that
+  is removed at the end, also after Ctrl-C or `--timeout`. Like Playwright by
+  default, it runs without the Chromium sandbox, because many hosts do not
+  allow the user namespaces it needs; a compromised page could then act with
+  your user's rights, so capture only pages you trust.
+- **Isolation:** every screenshot starts in a fresh browser context, so
+  storage, cookies, and cache never carry over between themes, widths, or URLs.
+- **Themes and sizes:** `--themes light,dark` (also `hell` and `dunkel`) sets
+  `prefers-color-scheme`. `--theme-cookie NAME` also sets the cookie `NAME` to
+  `light` or `dark` for applications that read the theme from a cookie; when
+  light and dark come out identical, a warning suggests it. `--widths
+  1440,390` sets the viewport width; the height is 900 px, or 844 px below
+  600 px (`--height`). Widths below 600 px emulate a phone with touch input;
+  wider ones a desktop with a mouse, so hover styles apply. `--scale 2` gives
+  sharper images; file names keep the CSS width. `--full-page` captures the
+  whole document; layouts that scroll inside a fixed-height container still
+  show one viewport, so raise `--height` for those.
+- **Sign-in:** `--cookie NAME=@FILE` sets an HTTP-only cookie for each URL of
+  the command from a file that holds only the value, so values never appear in
+  arguments. Keep such files private (mode 600, for example in
+  `$XDG_RUNTIME_DIR`), outside published folders, and do not mix URLs of
+  different applications in one command. `dev publish` refuses `*.cookie`
+  files. How to obtain a session depends on the application.
+- **Interaction:** after the page loads, `--eval JS` runs (top-level `await`
+  works), then each `--click SELECTOR` in order, then `--hover SELECTOR`, then
+  `--wait-for SELECTOR`. Each selector must match a visible element within
+  10 seconds; clicks and hovers scroll it into view if needed, `--wait-for`
+  does not scroll. Alert, confirm, and prompt dialogs are dismissed with a
+  warning. Animations and transitions are turned off, and the capture waits for
+  web fonts.
+- **Loading:** the capture follows redirects, including ones by script, waits
+  for the load event (at most 30 seconds), and then until no request has been
+  in flight for half a second, at most five seconds; event streams do not
+  count. Requests still running then are named in a warning. Content that
+  arrives later, for example over a WebSocket, needs `--wait-for`.
+- **Host names:** names below the configured domain resolve to the configured
+  listener address, so this host's previews work even when the host cannot
+  resolve its own names.
+- **Failures:** an HTTP status of 400 or more, a failed navigation, a missing
+  selector, a crashed page, or `--timeout` (90 seconds for the whole command
+  by default) stop the command with an error; files written before remain and
+  are listed. Showing another address than requested, such as a sign-in page,
+  and uncaught page errors are warnings.
+- `--json` lists the files with URL, final URL, status, theme, and width, the
+  warnings, and an `error` field when the command failed.
 
 ## Updates and removal
 

@@ -263,3 +263,28 @@ func TestArtifactStoreMustBeASiteDirectory(t *testing.T) {
 		t.Fatalf("accepted a foreign directory as store: %v", err)
 	}
 }
+
+func TestReadCookie(t *testing.T) {
+	dir := t.TempDir()
+	good := filepath.Join(dir, "app.cookie")
+	_ = os.WriteFile(good, []byte("abc123\n"), 0600)
+	if c, err := readCookie("session=@" + good); err != nil || c.Name != "session" || c.Value != "abc123" {
+		t.Fatalf("%+v %v", c, err)
+	}
+	multi := filepath.Join(dir, "multi.cookie")
+	_ = os.WriteFile(multi, []byte("a=1; b=2"), 0600)
+	for _, spec := range []string{"session=abc", "=@" + good, "session=@", "session=@" + filepath.Join(dir, "missing"), "session=@" + multi} {
+		if _, err := readCookie(spec); err == nil {
+			t.Errorf("accepted %q", spec)
+		}
+	}
+	var warned bytes.Buffer
+	old := stderr
+	stderr = &warned
+	defer func() { stderr = old }()
+	open := filepath.Join(dir, "open.cookie")
+	_ = os.WriteFile(open, []byte("x"), 0644)
+	if _, err := readCookie("s=@" + open); err != nil || !strings.Contains(warned.String(), "chmod 600") {
+		t.Fatalf("no permission warning: %v %q", err, warned.String())
+	}
+}

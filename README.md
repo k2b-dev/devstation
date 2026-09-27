@@ -80,7 +80,18 @@ unpublish P/N` removes one, and `--json` returns URLs for scripts. Hidden files,
 keys, dumps, databases, browser storage and traces, and data files that mention
 tokens or passwords are refused unless you pass `--allow-sensitive`.
 
-[Artifacts in detail →](docs/operations.md#artifacts)
+`dev shot [LABEL=]URL... --out DIR` takes the screenshots for such a gallery
+with a local headless Chrome or Chromium: one PNG per theme and width
+(`LABEL-dark-1440.png`), with session cookies read from files, and optional
+clicks or hovers before the capture.
+
+```sh
+dev shot login=https://app.dev.example.com/login --out shots \
+  --themes light,dark --widths 1440,390 --cookie session=@~/.cache/app.cookie
+dev publish shots --project app --name login-states
+```
+
+[Artifacts and screenshots in detail →](docs/operations.md#artifacts)
 
 ## Agent Skill
 
