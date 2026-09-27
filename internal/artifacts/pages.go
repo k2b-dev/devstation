@@ -19,6 +19,9 @@ var templateFS embed.FS
 var pages = template.Must(template.New("").Funcs(template.FuncMap{
 	"css":      func() template.CSS { return template.CSS(mustRead("templates/style.css")) },
 	"lightbox": func() template.JS { return template.JS(mustRead("templates/lightbox.js")) },
+	"comments": func() template.JS { return template.JS(mustRead("templates/comments.js")) },
+	"plan":     func() template.JS { return template.JS(mustRead("templates/plan.js")) },
+	"review":   func() template.JS { return template.JS(mustRead("templates/review.js")) },
 	"theme":    func() template.JS { return template.JS(mustRead("templates/theme.js")) },
 }).ParseFS(templateFS, "templates/pages.html"))
 
@@ -90,7 +93,9 @@ type versionPage struct {
 	MultiDoc                      bool
 	Sections                      []sectionView
 	HasMedia                      bool
+	Root                          string // the artifact, relative to this page
 	CommentsHref, CommentsAPI     string
+	Hint                          string // placeholder of the comment field
 }
 
 func heading(m Meta) string {
@@ -191,7 +196,7 @@ func renderVersion(m Meta, k int, current bool, ds docSet) ([]byte, error) {
 		Crumbs:  []crumb{{"artifacts", up + "../../"}, {m.Project, up + "../"}, {m.Name, ""}},
 		Version: k, At: v.At, IsCurrent: current,
 		LatestHref: up, Link: m.Link, Docs: docs, MultiDoc: len(docs) > 1,
-		CommentsHref: up + "comments.jsonl", CommentsAPI: CommentsPrefix + m.Project + "/" + m.Name,
+		Root: up, Hint: "Select text to comment on it, or write about the whole document.", CommentsHref: up + "comments.jsonl", CommentsAPI: CommentsPrefix + m.Project + "/" + m.Name,
 	}
 	if !current {
 		p.Crumbs[2].Href = up

@@ -189,8 +189,9 @@ Pages are generated from the files:
   pointer) zoom from the fitted size up to 400 %; `0` or the level button
   switches between fitted and 100 %.
 - **Captions:** a `captions.txt` in a folder of images gives its rows (or other
-  images, by name without extension) a short title and at most a sentence,
-  shown next to the row and in the viewer. Blocks are separated by blank lines;
+  images, by name without extension) a short title and at most a sentence.
+  The title shows next to the row (the sentence as its tooltip); the viewer
+  shows both. Blocks are separated by blank lines;
   the first line is `NAME: Title`, the rest the text. Titles over 60 and texts
   over 160 characters are cut, names without an image are skipped, and publish
   warns about both. The file itself is not listed.
@@ -265,14 +266,37 @@ comment keeps its number, so the others keep theirs. Pages switch
 between light, dark, and the system setting with the button at the top right;
 the choice is stored in the browser and applied before the page is drawn.
 
+**Plans.** On a page with Markdown documents, select text and press
+Comments (or `c`): the comment keeps the source lines of the selected blocks,
+the quote, and the heading path above it. A numbered chip marks the block, the
+quote is highlighted, and the panel on the right (a sheet on phones) lists the
+comments; without a selection, a comment is about the whole document.
+Publishing stamps each rendered block with its lines (`data-line="A-B"`).
+
+**Mockups.** The stable URL of an HTML mockup opens its review page,
+`review/VERSION/`, which shows the unchanged mockup from `v/VERSION/` in a
+frame. Outside comment mode the mockup works as usual. Comment (or `c`) turns
+comment mode on: the next click pins the element under it instead of acting,
+and the comment keeps the page and route, the element (selector, text, and
+the dialog, form, or section around it), the clicks made since the page
+loaded, and the viewport and theme. Pins follow their elements and hide while
+an element is gone or covered, for example until its dialog opens again.
+Without a pin, a comment is about the page as shown.
+
 Agents read and resolve comments from the command line:
 
 ```sh
-dev comments app/login-states            # open comments with image, version, pin, link
+dev comments app/login-states            # open comments with what they point at and a link
 dev comments app/login-states --all --json
 dev comments app/login-states --images /tmp/pins   # copies with numbered pins drawn in
 dev comments resolve app/login-states 3fa2c1d9e0 7b41c0e2aa
 ```
+
+A plan comment prints `plan.md:42-44` with the quote, the section, and the
+source lines; a mockup comment prints the page, viewport, steps, element, and
+a `shot:` line, a `dev shot` command that opens that state (`--click` for the
+steps, `--hover` on the element). The comment text follows as `> ` lines, so
+it cannot pass for these details.
 
 `--images` writes PNG copies of images that have pinned comments (PNG, JPEG,
 and GIF sources up to 50 megapixels) to `DIR/vVERSION/PATH`, with `.png`
@@ -293,15 +317,25 @@ systemctl --user daemon-reload
 systemctl --user enable --now devstation-daemon
 ```
 
-Pages published before v0.5 get the comment panel and the theme button with
-the artifact's next publish; their older version pages stay as they were.
+Pages get new comment features with the artifact's next publish (mockups get
+their review page then); older version pages stay as they were. After
+`dev update`, restart the daemon too (`systemctl --user restart
+devstation-daemon`): an older daemon stores comments without the places they
+point at, and pages then say so.
 Without the daemon, pages still show existing comments and report that new
 ones cannot be sent. The daemon accepts only JSON requests whose `Origin`
 matches the host, so other sites cannot post through a visitor's browser.
 There is no login: everyone who can reach the listener can comment, as they
 can read. Comments are plain text of up to 4000 characters without control
-characters (line breaks and tabs are fine) and are shown as text, never as
-HTML. They are stored as `comments.jsonl` in the artifact's directory,
+or text direction characters (line breaks and tabs are fine) and are shown as
+text, never as HTML; the same goes for quotes, selectors, and steps. Mockups
+share the origin of the comment API, which their review page needs to reach
+into the frame, so a mockup's own scripts could add, resolve, or delete
+comments too; publish only mockups you trust. Known limits: listeners that a
+mockup registers on its window before comment mode starts still see clicks in
+comment mode, clicks inside a mockup's own frames are not caught, and when a
+quote occurs twice in its paragraph, the first occurrence is highlighted.
+Comments are stored as `comments.jsonl` in the artifact's directory,
 readable at `/PROJECT/NAME/comments.jsonl`, and removed with the artifact;
 deleting a comment rewrites the file without its text. One
 artifact takes new comments until it holds 1 MiB of them; marking comments

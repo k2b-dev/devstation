@@ -27,15 +27,15 @@ func fp(v float64) *float64 { return &v }
 func TestCommentsLifecycle(t *testing.T) {
 	s, _ := testStore(t)
 	publishShots(t, s)
-	c1, err := s.AddComment("p", "n", "a-dark-1440.png", 1, fp(0.25), fp(0.5), "  Ring is clipped  ")
+	c1, err := s.AddComment("p", "n", NewComment{Path: "a-dark-1440.png", Version: 1, X: fp(0.25), Y: fp(0.5), Text: "  Ring is clipped  "})
 	if err != nil || c1.Number != 1 || c1.Text != "Ring is clipped" {
 		t.Fatalf("%+v %v", c1, err)
 	}
-	c2, err := s.AddComment("p", "n", "a-dark-1440.png", 1, nil, nil, "Overall too busy")
+	c2, err := s.AddComment("p", "n", NewComment{Path: "a-dark-1440.png", Version: 1, Text: "Overall too busy"})
 	if err != nil || c2.Number != 2 || c2.X != nil {
 		t.Fatalf("%+v %v", c2, err)
 	}
-	if c3, err := s.AddComment("p", "n", "notes.txt", 1, nil, nil, "typo"); err != nil || c3.Number != 1 {
+	if c3, err := s.AddComment("p", "n", NewComment{Path: "notes.txt", Version: 1, Text: "typo"}); err != nil || c3.Number != 1 {
 		t.Fatalf("numbers count per file: %+v %v", c3, err)
 	}
 	for _, bad := range []struct {
@@ -52,7 +52,7 @@ func TestCommentsLifecycle(t *testing.T) {
 		{"a-dark-1440.png", 1, nil, nil, strings.Repeat("x", maxCommentRunes+1)},
 		{"a-dark-1440.png", 1, nil, nil, "fine\x1b[1A\x1b[2K\rresolved"},
 	} {
-		if _, err := s.AddComment("p", "n", bad.path, bad.version, bad.x, bad.y, bad.text); err == nil {
+		if _, err := s.AddComment("p", "n", NewComment{Path: bad.path, Version: bad.version, X: bad.x, Y: bad.y, Text: bad.text}); err == nil {
 			t.Fatalf("accepted %+v", bad)
 		}
 	}
@@ -74,7 +74,7 @@ func TestCommentsLifecycle(t *testing.T) {
 		t.Fatalf("torn line: %d %v", len(cs), err)
 	}
 	// The next comment starts on a new line instead of joining the torn one.
-	if c4, err := s.AddComment("p", "n", "a-dark-1440.png", 1, nil, nil, "after\ta crash"); err != nil || c4.Text != "after\ta crash" || c4.Number != 3 {
+	if c4, err := s.AddComment("p", "n", NewComment{Path: "a-dark-1440.png", Version: 1, Text: "after\ta crash"}); err != nil || c4.Text != "after\ta crash" || c4.Number != 3 {
 		t.Fatalf("after a torn line: %+v %v", c4, err)
 	}
 	// Comments go with the artifact.
@@ -91,7 +91,7 @@ func TestDeleteKeepsNumbers(t *testing.T) {
 	publishShots(t, s)
 	var ids []string
 	for _, text := range []string{"one", "two secret", "three"} {
-		c, err := s.AddComment("p", "n", "a-dark-1440.png", 1, nil, nil, text)
+		c, err := s.AddComment("p", "n", NewComment{Path: "a-dark-1440.png", Version: 1, Text: text})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -108,7 +108,7 @@ func TestDeleteKeepsNumbers(t *testing.T) {
 		t.Fatalf("numbers after delete: %+v %v", cs, err)
 	}
 	// A new comment never takes the deleted number.
-	if c, err := s.AddComment("p", "n", "a-dark-1440.png", 1, nil, nil, "four"); err != nil || c.Number != 4 {
+	if c, err := s.AddComment("p", "n", NewComment{Path: "a-dark-1440.png", Version: 1, Text: "four"}); err != nil || c.Number != 4 {
 		t.Fatalf("after delete: %+v %v", c, err)
 	}
 	data, _ := os.ReadFile(s.commentsPath("p", "n"))
@@ -129,14 +129,14 @@ func TestDeleteKeepsNumbers(t *testing.T) {
 func TestResolveAfterCommentLimit(t *testing.T) {
 	s, _ := testStore(t)
 	publishShots(t, s)
-	c, err := s.AddComment("p", "n", "a-dark-1440.png", 1, nil, nil, "first")
+	c, err := s.AddComment("p", "n", NewComment{Path: "a-dark-1440.png", Version: 1, Text: "first"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	f, _ := os.OpenFile(s.commentsPath("p", "n"), os.O_APPEND|os.O_WRONLY, 0600)
 	_, _ = f.WriteString(strings.Repeat("{}\n", maxCommentsFile/3+1))
 	f.Close()
-	if _, err = s.AddComment("p", "n", "a-dark-1440.png", 1, nil, nil, "second"); err == nil {
+	if _, err = s.AddComment("p", "n", NewComment{Path: "a-dark-1440.png", Version: 1, Text: "second"}); err == nil {
 		t.Fatal("accepted a comment beyond the limit")
 	}
 	if err = s.Resolve("p", "n", []string{c.ID}, true); err != nil {
@@ -196,7 +196,7 @@ func TestCommentHandler(t *testing.T) {
 func TestAnnotate(t *testing.T) {
 	s, _ := testStore(t)
 	publishShots(t, s)
-	c, err := s.AddComment("p", "n", "a-dark-1440.png", 1, fp(0.25), fp(0.5), "here")
+	c, err := s.AddComment("p", "n", NewComment{Path: "a-dark-1440.png", Version: 1, X: fp(0.25), Y: fp(0.5), Text: "here"})
 	if err != nil {
 		t.Fatal(err)
 	}

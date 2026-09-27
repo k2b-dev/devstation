@@ -14,7 +14,7 @@ const CommentsPrefix = "/_devstation/comments/"
 // CommentHandler serves the comment API that the artifact pages call, below
 // the prefix it is mounted at:
 //
-//	POST /PROJECT/NAME          {"path", "version", "x", "y", "text"}
+//	POST /PROJECT/NAME          {"path", "version", "x", "y", "anchor", "text"}
 //	POST /PROJECT/NAME/resolve  {"ids": [...], "resolved": true}
 //	POST /PROJECT/NAME/delete   {"ids": [...]}
 //
@@ -41,18 +41,12 @@ func CommentHandler(s Store) http.Handler {
 		p, n := parts[0], parts[1]
 		switch {
 		case len(parts) == 2:
-			var in struct {
-				Path    string   `json:"path"`
-				Version int      `json:"version"`
-				X       *float64 `json:"x"`
-				Y       *float64 `json:"y"`
-				Text    string   `json:"text"`
-			}
+			var in NewComment
 			if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 				fail(w, http.StatusBadRequest, "invalid JSON")
 				return
 			}
-			c, err := s.AddComment(p, n, in.Path, in.Version, in.X, in.Y, in.Text)
+			c, err := s.AddComment(p, n, in)
 			if err != nil {
 				fail(w, http.StatusBadRequest, err.Error())
 				return

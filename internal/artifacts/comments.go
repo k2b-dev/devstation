@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-	"unicode"
 	"unicode/utf8"
 )
 
@@ -22,8 +21,9 @@ const (
 )
 
 // Comment is feedback on one file of one version, optionally pinned to a
-// point given as fractions of the image width and height. Number counts the
-// comments of that file and version, starting at 1, as shown on the image.
+// point given as fractions of the image (or, with a page anchor, of the
+// element) and optionally anchored inside the file. Number counts the
+// comments of that file and version, starting at 1, as shown on the page.
 type Comment struct {
 	ID       string    `json:"id"`
 	Path     string    `json:"path"`
@@ -31,6 +31,7 @@ type Comment struct {
 	Number   int       `json:"number"`
 	X        *float64  `json:"x,omitempty"`
 	Y        *float64  `json:"y,omitempty"`
+	Anchor   *Anchor   `json:"anchor,omitempty"`
 	Text     string    `json:"text"`
 	At       time.Time `json:"at"`
 	Resolved bool      `json:"resolved"`
@@ -46,6 +47,7 @@ type commentEvent struct {
 	Version  int       `json:"version,omitempty"`
 	X        *float64  `json:"x,omitempty"`
 	Y        *float64  `json:"y,omitempty"`
+	Anchor   *Anchor   `json:"anchor,omitempty"`
 	Text     string    `json:"text,omitempty"`
 	Resolved bool      `json:"resolved,omitempty"`
 	At       time.Time `json:"at"`
@@ -86,7 +88,7 @@ func (s Store) Comments(p, n string) ([]Comment, error) {
 			key := fmt.Sprintf("%d/%s", e.Version, e.Path)
 			numbers[key]++
 			index[e.ID] = len(comments)
-			comments = append(comments, Comment{ID: e.ID, Path: e.Path, Version: e.Version, Number: numbers[key], X: e.X, Y: e.Y, Text: e.Text, At: e.At})
+			comments = append(comments, Comment{ID: e.ID, Path: e.Path, Version: e.Version, Number: numbers[key], X: e.X, Y: e.Y, Anchor: e.Anchor, Text: e.Text, At: e.At})
 		case "deleted": // keeps its number, so the others keep theirs
 			numbers[fmt.Sprintf("%d/%s", e.Version, e.Path)]++
 		case "resolve":
@@ -99,18 +101,15 @@ func (s Store) Comments(p, n string) ([]Comment, error) {
 }
 
 // AddComment records feedback on a published file.
-func (s Store) AddComment(p, n, path string, version int, x, y *float64, text string) (Comment, error) {
-	text = strings.TrimSpace(text)
+func (s Store) AddComment(p, n string, in NewComment) (Comment, error) {
+	text := strings.TrimSpace(in.Text)
 	if text == "" || utf8.RuneCountInString(text) > maxCommentRunes {
 		return Comment{}, fmt.Errorf("a comment needs 1 to %d characters", maxCommentRunes)
 	}
 	// Agents read comments in a terminal, where control characters would
 	// act as escape sequences.
-	if strings.ContainsFunc(text, func(r rune) bool { return unicode.IsControl(r) && r != '\n' && r != '\t' }) {
-		return Comment{}, errors.New("a comment cannot contain control characters")
-	}
-	if (x == nil) != (y == nil) || (x != nil && (*x < 0 || *x > 1 || *y < 0 || *y > 1)) {
-		return Comment{}, fmt.Errorf("a pin needs x and y between 0 and 1")
+	if err := checkChars(text, true); err != nil {
+		return Comment{}, fmt.Errorf("a comment: %w", err)
 	}
 	unlock, err := s.lock()
 	if err != nil {
@@ -121,21 +120,21 @@ func (s Store) AddComment(p, n, path string, version int, x, y *float64, text st
 	if err != nil {
 		return Comment{}, fmt.Errorf("artifact %s/%s does not exist", p, n)
 	}
-	found := false
-	for _, v := range m.Versions {
-		if v.N != version {
-			continue
-		}
-		for _, f := range v.Files {
-			found = found || f.Path == path
+	var version *Version
+	for i := range m.Versions {
+		if m.Versions[i].N == in.Version {
+			version = &m.Versions[i]
 		}
 	}
-	if !found {
-		return Comment{}, fmt.Errorf("version %d of %s/%s has no file %q", version, p, n, path)
+	if version == nil {
+		return Comment{}, fmt.Errorf("%s/%s has no version %d", p, n, in.Version)
+	}
+	if err = in.check(*version); err != nil {
+		return Comment{}, fmt.Errorf("%s/%s: %w", p, n, err)
 	}
 	id := make([]byte, 5)
 	_, _ = rand.Read(id)
-	e := commentEvent{Type: "comment", ID: hex.EncodeToString(id), Path: path, Version: version, X: x, Y: y, Text: text, At: s.now()}
+	e := commentEvent{Type: "comment", ID: hex.EncodeToString(id), Path: in.Path, Version: in.Version, X: in.X, Y: in.Y, Anchor: in.Anchor, Text: text, At: s.now()}
 	if err = s.appendComment(p, n, e, maxCommentsFile); err != nil {
 		return Comment{}, err
 	}

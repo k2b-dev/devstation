@@ -37,11 +37,23 @@ func parseCaptions(name string, src []byte, known map[string]bool) (map[string]c
 		warn("larger than %d KiB, ignored", maxCaptionsSize>>10)
 		return out, warnings
 	}
-	for _, block := range strings.Split(strings.ReplaceAll(string(src), "\r\n", "\n"), "\n\n") {
-		lines := strings.Split(strings.TrimSpace(block), "\n")
-		if lines[0] == "" {
+	// Blocks end at lines that are blank, even if they hold spaces.
+	var blocks [][]string
+	var block []string
+	for _, l := range strings.Split(strings.ReplaceAll(string(src), "\r\n", "\n"), "\n") {
+		if strings.TrimSpace(l) == "" {
+			if block != nil {
+				blocks, block = append(blocks, block), nil
+			}
 			continue
 		}
+		block = append(block, l)
+	}
+	if block != nil {
+		blocks = append(blocks, block)
+	}
+	for _, lines := range blocks {
+		lines[0] = strings.TrimSpace(lines[0])
 		key, title, ok := strings.Cut(lines[0], ":")
 		key, title = strings.TrimSpace(key), strings.TrimSpace(title)
 		if !ok || key == "" || title == "" {

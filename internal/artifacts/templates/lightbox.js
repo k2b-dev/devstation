@@ -5,83 +5,30 @@
   function q(selector) { return box.querySelector(selector); }
   var caption = q(".lb-caption"), stage = q(".lb-stage"), name = q(".lb-name"), meta = q(".lb-meta"), count = q(".lb-count"), original = q(".lb-original");
   var list = q(".lb-list"), form = q(".lb-form"), text = q("textarea"), send = q(".lb-actions button"), note = q(".lb-pin-note"), status = q(".lb-error");
-  var version = Number(box.dataset.version), api = box.dataset.api, source = box.dataset.comments;
-  var current = 0, comments = [], counts = {}, loaded = false, loadError = "", busy = false, pending = null, active = "";
+  var D = devComments;
+  if (!D) return;
+  var version = D.version, current = 0, busy = false, pending = null, active = "";
   var drafts = {}; // unsent text and pin per file while browsing
 
   function href(f) { return f.querySelector("a.thumb").getAttribute("href"); }
-  function el(tag, cls, content) {
-    var e = document.createElement(tag);
-    if (cls) e.className = cls;
-    if (content) e.textContent = content;
-    return e;
-  }
-
-  // comments.jsonl is a log of comments, resolve events, and the places of
-  // deleted comments. Numbers count per version and file, as in `dev comments`.
-  function parse(body) {
-    var byID = {}, numbers = {}, out = [];
-    body.split("\n").forEach(function (line) {
-      var e;
-      try { e = JSON.parse(line); } catch (err) { return; }
-      if (e.type === "comment") {
-        var key = e.version + "/" + e.path;
-        numbers[key] = (numbers[key] || 0) + 1;
-        byID[e.id] = { id: e.id, path: e.path, version: e.version, number: numbers[key], x: e.x, y: e.y, text: e.text, at: e.at, resolved: false };
-        out.push(byID[e.id]);
-      } else if (e.type === "deleted") { // keeps its number, so the others keep theirs
-        var gone = e.version + "/" + e.path;
-        numbers[gone] = (numbers[gone] || 0) + 1;
-      } else if (e.type === "resolve" && byID[e.id]) {
-        byID[e.id].resolved = !!e.resolved;
-      }
-    });
-    return { comments: out, counts: numbers };
-  }
-  // load never fails: errors show in the viewer and keep the last comments.
-  function load() {
-    return fetch(source, { cache: "no-store" })
-      .then(function (r) {
-        if (r.ok) return r.text();
-        if (r.status === 404) return ""; // no comments yet
-        throw new Error("Could not load comments (HTTP " + r.status + ").");
-      }, function () { throw new Error("Could not load comments."); })
-      .then(function (body) { var r = parse(body); comments = r.comments; counts = r.counts; loadError = ""; }, function (err) { loadError = err.message; showError(err); })
-      .then(function () {
-        loaded = true;
-        badges();
-        if (box.open) render();
-      });
-  }
-  function forPath(path) { return comments.filter(function (c) { return c.path === path; }); }
+  var el = D.el;
+  function forPath(path) { return D.comments.filter(function (c) { return c.path === path; }); }
   function badges() {
-    var total = 0;
     items.forEach(function (f) {
       var open = forPath(f.id).filter(function (c) { return !c.resolved; }).length;
-      total += open;
       var badge = f.querySelector(".pins");
       if (!open) { if (badge) badge.remove(); return; }
       if (!badge) { badge = el("span", "pins"); f.querySelector("figcaption").appendChild(badge); }
       badge.textContent = open + (open === 1 ? " comment" : " comments");
     });
-    var header = document.querySelector(".open-comments");
-    if (header) {
-      header.hidden = !total;
-      header.textContent = total + (total === 1 ? " open comment" : " open comments");
-    }
   }
+  D.on(function () {
+    badges();
+    if (D.error) showError(new Error(D.error));
+    if (box.open) render();
+  });
 
-  function post(url, body) {
-    return fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
-      .then(function (r) {
-        if (r.ok) return r;
-        return r.json().then(
-          function (j) { throw new Error(j.error || "HTTP " + r.status); },
-          function () { throw new Error("The Devstation daemon is not reachable (dev daemon)."); });
-      }, function () { throw new Error("The Devstation daemon is not reachable (dev daemon)."); });
-  }
-
-  function nextNumber() { return (counts[version + "/" + items[current].id] || 0) + 1; }
+  function nextNumber() { return D.next(items[current].id); }
   // The circle sits up and to the right of the spot, or on the other side
   // near an edge, so the spot stays visible.
   function place(pin, x, y) {
@@ -113,62 +60,17 @@
     list.replaceChildren();
     var path = items[current].id;
     var shown = forPath(path).sort(function (a, b) { return (b.version === version) - (a.version === version); });
-    if (!shown.length) list.appendChild(el("li", "empty", !loaded ? "Loading comments…" : loadError ? "Comments could not be loaded." : "No comments yet."));
+    if (!shown.length) list.appendChild(el("li", "empty", !D.loaded ? "Loading comments…" : D.error ? "Comments could not be loaded." : "No comments yet."));
     shown.forEach(function (c) {
-      var li = el("li", (c.resolved ? "resolved" : "") + (c.id === active ? " active" : ""));
-      li.dataset.id = c.id;
-      var head = el("div", "lb-comment-head");
-      head.appendChild(el("span", "num", (c.x != null ? "● " : "") + "#" + c.number + (c.version !== version ? " · v" + c.version : "")));
-      head.appendChild(el("time", "", new Date(c.at).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" })));
-      var check = el("input", "done");
-      check.type = "checkbox";
-      check.checked = c.resolved;
-      check.title = "Done";
-      check.setAttribute("aria-label", "Mark #" + c.number + " done");
-      check.addEventListener("change", function () {
-        status.textContent = "";
-        post(api + "/resolve", { ids: [c.id], resolved: check.checked })
-          .then(load, function (err) { showError(err); render(); })
-          .then(function () { // the list was drawn anew; keep the keyboard focus
-            if (document.activeElement && document.activeElement !== document.body) return;
-            [].slice.call(list.children).forEach(function (li) {
-              if (li.dataset.id === c.id) li.querySelector("input").focus();
-            });
-          });
-      });
-      head.appendChild(check);
-      head.appendChild(trash(c));
-      li.appendChild(head);
-      li.appendChild(el("p", "", c.text));
-      li.addEventListener("mouseenter", function () { highlight(c.id, true); });
-      list.appendChild(li);
+      list.appendChild(D.item(c, {
+        label: (c.x != null ? "● " : "") + "#" + c.number + (c.version !== version ? " · v" + c.version : ""),
+        active: c.id === active, onError: showError,
+        onEnter: function () { highlight(c.id, true); },
+      }));
     });
     note.textContent = pending ? "Pin " + nextNumber() + " placed" : "";
-    send.disabled = busy || !loaded;
+    send.disabled = busy || !D.loaded;
   }
-  // The first click arms the button, a second one within three seconds
-  // deletes: deleting cannot be undone.
-  function trash(c) {
-    var b = el("button", "trash");
-    b.type = "button";
-    function idle() { b.classList.remove("armed"); b.innerHTML = TRASH; b.title = "Delete"; b.setAttribute("aria-label", "Delete #" + c.number); }
-    idle();
-    b.addEventListener("click", function () {
-      if (!b.classList.contains("armed")) {
-        b.classList.add("armed");
-        b.textContent = "Delete?";
-        b.setAttribute("aria-label", "Confirm: delete #" + c.number);
-        setTimeout(function () { if (b.isConnected) idle(); }, 3000);
-        return;
-      }
-      status.textContent = "";
-      post(api + "/delete", { ids: [c.id] })
-        .then(load, function (err) { showError(err); render(); })
-        .then(function () { if (document.activeElement === document.body) list.focus(); });
-    });
-    return b;
-  }
-  var TRASH = '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" d="M2.5 4h11M6.5 4V2.5h3V4M4 4l.7 9.5h6.6L12 4M6.8 6.5v4.5M9.2 6.5v4.5"/></svg>';
   function render() { renderPins(); renderList(); }
   // Highlighting only toggles classes, so elements under the pointer stay.
   function highlight(id, quiet) {
@@ -181,7 +83,7 @@
       if (li) li.scrollIntoView({ block: "nearest" });
     }
   }
-  function showError(err) { status.textContent = err.message; }
+  function showError(err) { status.textContent = err ? err.message : ""; }
 
   // Zoom: null fits the image into the viewer, a number scales its natural
   // size. Pins sit in percent of the image, so they follow.
@@ -258,7 +160,7 @@
     text.value = draft.text || "";
     pending = draft.pending || null;
     active = "";
-    status.textContent = loadError;
+    status.textContent = D.error;
     name.textContent = f.dataset.name;
     meta.textContent = [f.dataset.section, f.dataset.row, f.dataset.col].filter(Boolean).join(" · ");
     caption.hidden = !f.dataset.title;
@@ -278,13 +180,13 @@
   form.addEventListener("submit", function (e) {
     e.preventDefault();
     var path = items[current].id, sent = text.value.trim();
-    if (!sent || busy || !loaded) return;
+    if (!sent || busy || !D.loaded) return;
     var body = { path: path, version: version, text: sent };
     if (pending) { body.x = pending.x; body.y = pending.y; }
     busy = true;
     send.disabled = true;
     status.textContent = "";
-    post(api, body).then(function () {
+    D.post("", body).then(function () {
       // Clear only what was sent: the viewer may show another file or be
       // closed by now.
       if (box.open && items[current].id === path && text.value.trim() === sent) {
@@ -292,10 +194,10 @@
         pending = null;
       }
       if (drafts[path] && drafts[path].text.trim() === sent) delete drafts[path];
-      return load();
+      return D.load();
     }, showError).then(function () {
       busy = false;
-      send.disabled = !loaded;
+      send.disabled = !D.loaded;
     });
   });
   items.forEach(function (f, n) {
@@ -319,7 +221,13 @@
     if (!e.ctrlKey && !e.metaKey && !e.altKey) {
       if (e.key === "+" || e.key === "=") { stepZoom(1); e.preventDefault(); }
       if (e.key === "-") { stepZoom(-1); e.preventDefault(); }
-      if (e.key === "0") { setZoom(null); e.preventDefault(); }
+      if (e.key === "0") { setZoom(zoom === null ? 1 : null); e.preventDefault(); }
+    }
+    // Zoomed in, the arrow keys move across the image instead of to the next one.
+    if (zoom !== null && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+      scroller.scrollLeft += e.key === "ArrowLeft" ? -80 : 80;
+      e.preventDefault();
+      return;
     }
     if (e.key === "ArrowLeft") { show(current - 1); e.preventDefault(); }
     if (e.key === "ArrowRight") { show(current + 1); e.preventDefault(); }
@@ -348,5 +256,4 @@
   for (var i = 0; target && i < items.length; i++) {
     if (items[i].id === target) { open(i); break; }
   }
-  load();
 })();

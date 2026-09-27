@@ -259,6 +259,25 @@ func TestCaddyIntegration(t *testing.T) {
 	if body, _ := get("/demo/board/comments.jsonl", 200); !strings.Contains(body, "clipped") {
 		t.Fatalf("comment log: %q", body)
 	}
+	// A mockup opens on its review page and takes comments on its elements.
+	mock := filepath.Join(configDir, "mock")
+	_ = os.MkdirAll(mock, 0700)
+	_ = os.WriteFile(filepath.Join(mock, "index.html"), []byte("<button id=save>Save</button>"), 0600)
+	if err := Run([]string{"--config", configPath, "publish", mock, "--project", "demo", "--name", "mock"}, "test", io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	if page, _ := get("/demo/mock/", 200); !strings.Contains(page, `"./review/1/"`) {
+		t.Fatalf("mockup does not open its review page: %q", page)
+	}
+	if page, _ := get("/demo/mock/review/1/", 200); !strings.Contains(page, `<iframe id="mockup"`) {
+		t.Fatalf("review page: %q", page)
+	}
+	if body, _ := get("/demo/mock/v/1/index.html", 200); body != "<button id=save>Save</button>" {
+		t.Fatalf("mockup changed: %q", body)
+	}
+	if code := post("/_devstation/comments/demo/mock", `{"path":"index.html","version":1,"x":0.5,"y":0.5,"anchor":{"selector":"button#save","quote":"Save","width":1280,"height":800,"theme":"light"},"text":"bigger"}`, c.url("artifacts")); code != http.StatusCreated {
+		t.Fatalf("mockup comment through Caddy: %d", code)
+	}
 	_ = os.WriteFile(filepath.Join(shots, "board-dark-1440.png"), append(image, '!'), 0600)
 	publish()
 	if page, _ = get("/demo/board/", 200); !strings.Contains(page, "v/2/board-dark-1440.png") {

@@ -93,7 +93,8 @@ dev publish shots --project app --name login-states
 ```
 
 To give feedback, click an image in the viewer to pin a numbered comment to
-that spot, or just type a comment. Agents read it with
+that spot, select text in a plan and comment on it, or open a mockup's review
+page and pin a comment to an element inside it. Agents read it with
 `dev comments app/login-states`, and `--images DIR` writes copies of the
 images with the numbered pins drawn in. Comments need the small background
 service `dev daemon` ([user unit](examples/devstation-daemon.service)).

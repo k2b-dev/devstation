@@ -8,7 +8,7 @@ import (
 
 func TestParseCaptions(t *testing.T) {
 	known := map[string]bool{"01-list": true, "02-dialog": true, "diagram": true}
-	src := "01-list: Empty list\r\nNo entries yet;\r\n\"New\" sits top right.\r\n\r\n02-dialog: " + strings.Repeat("t", 70) + "\n" + strings.Repeat("x", 200) + "\n\n\nnot a caption\n\n03-gone: Missing\n\ndiagram:   Flow  \n"
+	src := "01-list: Empty list\r\nNo entries yet;\r\n\"New\" sits top right.\r\n  \t\r\n02-dialog: " + strings.Repeat("t", 70) + "\n" + strings.Repeat("x", 200) + "\n\n\nnot a caption\n\n03-gone: Missing\n\ndiagram:   Flow  \n"
 	caps, warnings := parseCaptions("captions.txt", []byte(src), known)
 	if c := caps["01-list"]; c.Title != "Empty list" || c.Text != `No entries yet; "New" sits top right.` {
 		t.Fatalf("01-list: %+v", c)
