@@ -18,12 +18,21 @@ const help = `devstation — local services behind HTTPS
   dev serve PATH --name NAME [--no-reload]
   dev list [--json]
   dev unexpose NAME [--no-reload]
+  dev publish PATH... --project P --name N [--title T] [--link URL] [--keep]
+              [--allow-sensitive] [--json]
+  dev artifacts [PROJECT] [--json]
+  dev keep PROJECT/NAME [--json]
+  dev unpublish PROJECT/NAME... | --expired [--json]
   dev version
   dev update [VERSION]
 
 Global option (before command): --config PATH
 Default: $XDG_CONFIG_HOME/devstation/config.toml or ~/.config/devstation/config.toml
 --no-reload writes validated configuration for initial setup; it does not start Caddy.
+publish copies files into the store behind the "artifacts" route, created by
+the first publish under $XDG_DATA_HOME/devstation/artifacts (default
+~/.local/share/devstation/artifacts). Artifacts expire 14 days after their last
+publish unless kept.
 `
 
 func Run(args []string, version string, out io.Writer) error {
@@ -71,6 +80,12 @@ func Run(args []string, version string, out io.Writer) error {
 			target = args[1]
 		}
 		return release.Update(target, out)
+	case "publish", "artifacts", "keep", "unpublish":
+		c, err := LoadConfig(*config)
+		if err != nil {
+			return err
+		}
+		return runArtifacts(c, args, out)
 	case "expose", "serve", "unexpose", "list":
 	default:
 		return fmt.Errorf("unknown command %q; run dev --help", args[0])
@@ -175,6 +190,9 @@ func Run(args []string, version string, out io.Writer) error {
 	found := false
 	next := []Route{}
 	for _, r := range routes {
+		if r.Name == name && r.Kind == "artifacts" && args[0] != "unexpose" {
+			return fmt.Errorf("route %q serves published artifacts; choose another name", name)
+		}
 		if r.Name == name {
 			found = true
 		} else {

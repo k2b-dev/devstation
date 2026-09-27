@@ -178,6 +178,63 @@ func TestCaddyIntegration(t *testing.T) {
 	if err != nil || len(parsed) != 3 {
 		t.Fatalf("static routes not saved: %v %v", parsed, err)
 	}
+	// The first publish creates the artifacts route; later publishes only write files.
+	t.Setenv("XDG_DATA_HOME", filepath.Join(configDir, "data"))
+	shots := filepath.Join(configDir, "shots")
+	if err := os.MkdirAll(shots, 0700); err != nil {
+		t.Fatal(err)
+	}
+	image := []byte("\x89PNG fake image bytes")
+	_ = os.WriteFile(filepath.Join(shots, "board-dark-1440.png"), image, 0600)
+	publish := func() {
+		t.Helper()
+		if err := Run([]string{"--config", configPath, "publish", shots, "--project", "demo", "--name", "board"}, "test", io.Discard); err != nil {
+			t.Fatal(err)
+		}
+	}
+	publish()
+	noRedirect := &http.Client{Transport: transport, Timeout: 2 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	get := func(path string, status int) (string, http.Header) {
+		t.Helper()
+		resp, e := noRedirect.Get(c.url("artifacts") + path)
+		if e != nil {
+			t.Fatal(e)
+		}
+		defer resp.Body.Close()
+		b, _ := io.ReadAll(resp.Body)
+		if resp.StatusCode != status {
+			t.Fatalf("%s: %d %q", path, resp.StatusCode, b)
+		}
+		return string(b), resp.Header
+	}
+	page, header := get("/demo/board/", 200)
+	if header.Get("Cache-Control") != "no-cache" || header.Get("X-Content-Type-Options") != "nosniff" || !strings.Contains(page, "v/1/board-dark-1440.png") {
+		t.Fatalf("artifact page: %q %q", header.Get("Cache-Control"), page)
+	}
+	if body, _ := get("/demo/board/v/1/board-dark-1440.png", 200); body != string(image) {
+		t.Fatal("published image differs")
+	}
+	if _, h := get("/demo/board", 308); h.Get("Location") != "/demo/board/" {
+		t.Fatalf("redirect: %q", h.Get("Location"))
+	}
+	if body, _ := get("/", 200); !strings.Contains(body, "./demo/") {
+		t.Fatal("root index misses the project")
+	}
+	_ = os.WriteFile(filepath.Join(shots, "board-dark-1440.png"), append(image, '!'), 0600)
+	publish()
+	if page, _ = get("/demo/board/", 200); !strings.Contains(page, "v/2/board-dark-1440.png") {
+		t.Fatal("stable page does not show version 2")
+	}
+	get("/demo/board/compare/1-2/", 200)
+	check("second", 200, "backend-one")
+	if err := Run([]string{"--config", configPath, "unpublish", "demo/board"}, "test", io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	get("/demo/board/", 404)
+	parsed, err = readRoutes(c.statePath())
+	if err != nil || len(parsed) != 4 {
+		t.Fatalf("artifacts route not saved: %v %v", parsed, err)
+	}
 	// Invalid certificate must not break the running route or persisted config.
 	saved, _ := os.ReadFile(c.statePath())
 	bad := c

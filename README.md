@@ -9,6 +9,9 @@ dev expose 3000 --name app
 dev serve ./dist --name docs
 # https://docs.dev.example.com:8443
 
+dev publish ./screenshots --project app --name login-states
+# https://artifacts.dev.example.com:8443/app/login-states/
+
 dev list
 dev unexpose app
 dev update
@@ -60,6 +63,24 @@ application. Caddy handles HTTPS and WebSockets for proxy routes.
 Use `dev list --json` for scripts, `dev version` to check the installed version,
 and `dev update [vX.Y.Z]` to update or pin it. Downloads are checksum-verified;
 updates preserve your configuration and routes.
+
+## Share Screenshots, Plans, and Mockups
+
+`dev publish PATH... --project P --name N` copies the files you pass into a
+versioned store and prints a stable URL. Images become a gallery whose grid
+comes from file names such as `login-empty-dark-1440.png` (row `login-empty`,
+column `dark · 1440`); clicking an image opens a viewer that pages with the
+arrow keys. Markdown files render as plan pages, and a folder with
+`index.html` or a single HTML file is served as-is. Publishing the same name
+again adds a version and a before/after page; the stable URL shows the latest.
+
+Artifacts expire 14 days after their last publish unless published with
+`--keep` or marked with `dev keep P/N`. `dev artifacts` lists them, `dev
+unpublish P/N` removes one, and `--json` returns URLs for scripts. Hidden files,
+keys, dumps, databases, browser storage and traces, and data files that mention
+tokens or passwords are refused unless you pass `--allow-sensitive`.
+
+[Artifacts in detail →](docs/operations.md#artifacts)
 
 ## Agent Skill
 

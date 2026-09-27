@@ -35,7 +35,19 @@ type handler struct {
 	StatusCode int        `json:"status_code,omitempty"`
 	Root       string     `json:"root,omitempty"`
 	URI        string     `json:"uri,omitempty"`
+	Response   *headerOps `json:"response,omitempty"`
 }
+type headerOps struct {
+	Set map[string][]string `json:"set"`
+}
+
+// Artifact pages change in place under stable URLs, so browsers revalidate
+// them with the ETag that file_server sends. nosniff keeps files without a
+// known type, such as extensionless notes, from running as HTML.
+func artifactHeaders() *headerOps {
+	return &headerOps{Set: map[string][]string{"Cache-Control": {"no-cache"}, "X-Content-Type-Options": {"nosniff"}}}
+}
+
 type upstream struct {
 	Dial string `json:"dial"`
 }
@@ -73,6 +85,8 @@ func render(c Config, routes []Route) ([]byte, error) {
 			handles = []handler{{Handler: "file_server", Root: r.Path}}
 		case "file":
 			handles = []handler{{Handler: "rewrite", URI: "/" + url.PathEscape(filepath.Base(r.Path))}, {Handler: "file_server", Root: filepath.Dir(r.Path)}}
+		case "artifacts":
+			handles = []handler{{Handler: "headers", Response: artifactHeaders()}, {Handler: "file_server", Root: r.Path}}
 		default:
 			return nil, fmt.Errorf("invalid route kind %q", r.Kind)
 		}
@@ -123,6 +137,15 @@ func readRoutes(path string) ([]Route, error) {
 				return nil, fmt.Errorf("invalid saved upstream")
 			}
 			entry.Port = port
+		case len(r.Handle) == 2 && r.Handle[0].Handler == "headers" && r.Handle[1].Handler == "file_server":
+			// Recognized by shape: the next apply writes the current header set,
+			// so routes saved by older versions keep working after an update.
+			h := r.Handle[0]
+			if h.Response == nil || len(h.Response.Set) == 0 || h.Root != "" || h.URI != "" || h.Upstreams != nil || h.StatusCode != 0 {
+				return nil, fmt.Errorf("invalid saved route %q", name)
+			}
+			entry.Kind = "artifacts"
+			entry.Path = r.Handle[1].Root
 		case len(r.Handle) == 1 && r.Handle[0].Handler == "file_server":
 			entry.Kind = "directory"
 			entry.Path = r.Handle[0].Root

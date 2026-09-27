@@ -2,6 +2,7 @@ package devstation
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -133,5 +134,132 @@ func TestListShowsSavedURLsAfterConfigEdit(t *testing.T) {
 	}
 	if !strings.Contains(output.String(), "https://example.dev.example.com:8443") {
 		t.Fatal(output.String())
+	}
+}
+
+func TestArtifactsRouteRoundTrip(t *testing.T) {
+	c := testConfig(t)
+	site := filepath.Join(c.dir, "artifacts", "site")
+	if err := ensureArtifactsRoute(c, site, func(...string) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	routes, err := readRoutes(c.statePath())
+	if err != nil || len(routes) != 1 || routes[0].Name != "artifacts" || routes[0].Kind != "artifacts" || routes[0].Path != site {
+		t.Fatalf("%+v %v", routes, err)
+	}
+	data, _ := os.ReadFile(c.statePath())
+	if !strings.Contains(string(data), `"Cache-Control": [`) || !strings.Contains(string(data), `"no-cache"`) {
+		t.Fatalf("missing cache header: %s", data)
+	}
+	calls := 0
+	if err = ensureArtifactsRoute(c, site, func(...string) error { calls++; return nil }); err != nil || calls != 0 {
+		t.Fatalf("existing route changed again: %v %d", err, calls)
+	}
+	if err = ensureArtifactsRoute(c, filepath.Join(c.dir, "elsewhere"), func(...string) error { return nil }); err == nil {
+		t.Fatal("replaced an artifacts route with another root")
+	}
+	// A header set saved by an older version still reads as the artifacts route.
+	older := strings.Replace(string(data), `"no-cache"`, `"max-age=600"`, 1)
+	_ = os.WriteFile(c.statePath(), []byte(older), 0600)
+	if routes, err = readRoutes(c.statePath()); err != nil || routes[0].Kind != "artifacts" {
+		t.Fatalf("older header set rejected: %v", err)
+	}
+	smuggled := strings.Replace(string(data), `"handler": "headers",`, `"handler": "headers", "root": "/", `, 1)
+	_ = os.WriteFile(c.statePath(), []byte(smuggled), 0600)
+	if _, err = readRoutes(c.statePath()); err == nil {
+		t.Fatal("accepted a headers handler with extra fields")
+	}
+}
+
+func TestArtifactsRouteNameConflict(t *testing.T) {
+	c := testConfig(t)
+	if err := apply(c, []Route{{Name: "artifacts", Port: 3000}}, true, func(...string) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	err := ensureArtifactsRoute(c, "/tmp/site", func(...string) error { return nil })
+	if err == nil || !strings.Contains(err.Error(), "dev unexpose artifacts") {
+		t.Fatalf("expected a conflict: %v", err)
+	}
+}
+
+// fakeCaddy puts a caddy that accepts every command first on PATH.
+func fakeCaddy(t *testing.T) {
+	t.Helper()
+	bin := t.TempDir()
+	if err := os.WriteFile(filepath.Join(bin, "caddy"), []byte("#!/bin/sh\nexit 0\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
+func TestArtifactCommands(t *testing.T) {
+	fakeCaddy(t)
+	c := testConfig(t)
+	t.Setenv("XDG_DATA_HOME", filepath.Join(c.dir, "data"))
+	configPath := filepath.Join(c.dir, "config.toml")
+	_ = os.WriteFile(configPath, []byte("domain = 'dev.example.com'\ncertificate = '/tmp/cert'\nkey = '/tmp/key'\n"), 0600)
+	shots := filepath.Join(c.dir, "shots")
+	_ = os.MkdirAll(shots, 0700)
+	_ = os.WriteFile(filepath.Join(shots, "a-dark-1440.png"), []byte("png"), 0600)
+	run := func(args ...string) string {
+		t.Helper()
+		var out bytes.Buffer
+		if err := Run(append([]string{"--config", configPath}, args...), "test", &out); err != nil {
+			t.Fatalf("%v: %v", args, err)
+		}
+		return out.String()
+	}
+	var published struct {
+		URL     string `json:"url"`
+		Version int    `json:"version"`
+	}
+	if err := json.Unmarshal([]byte(run("publish", shots, "--project", "cloud", "--name", "board", "--json")), &published); err != nil || published.URL != "https://artifacts.dev.example.com:8443/cloud/board/" {
+		t.Fatalf("%+v %v", published, err)
+	}
+	routes, _ := readRoutes(filepath.Join(c.dir, "state", "caddy.json"))
+	if len(routes) != 1 || routes[0].Kind != "artifacts" || routes[0].Path != filepath.Join(c.dir, "data", "devstation", "artifacts", "site") {
+		t.Fatalf("route: %+v", routes)
+	}
+	// Flags after positional arguments, as in the help text.
+	var list []map[string]any
+	if err := json.Unmarshal([]byte(run("artifacts", "cloud", "--json")), &list); err != nil || len(list) != 1 {
+		t.Fatalf("%v %v", list, err)
+	}
+	if out := run("keep", "--json", "--", "cloud/board"); !strings.Contains(out, `"keep":true`) {
+		t.Fatal(out)
+	}
+	// Once the route exists it decides the store, whatever XDG_DATA_HOME says.
+	t.Setenv("XDG_DATA_HOME", filepath.Join(c.dir, "other"))
+	if out := run("artifacts"); !strings.Contains(out, "cloud/board") {
+		t.Fatalf("store not taken from the route: %q", out)
+	}
+	if err := Run([]string{"--config", configPath, "serve", shots, "--name", "artifacts"}, "test", &bytes.Buffer{}); err == nil {
+		t.Fatal("serve replaced the artifacts route")
+	}
+	if out := run("unpublish", "cloud/board", "--json"); !strings.Contains(out, `"removed":["cloud/board"]`) {
+		t.Fatal(out)
+	}
+	if err := Run([]string{"--config", configPath, "publish", shots, "--project", "Bad", "--name", "x"}, "test", &bytes.Buffer{}); err == nil {
+		t.Fatal("accepted an invalid project")
+	}
+	run("unexpose", "artifacts")
+	// A rejected publish must not add the route.
+	if err := Run([]string{"--config", configPath, "publish", shots, "--project", "Bad", "--name", "x"}, "test", &bytes.Buffer{}); err == nil {
+		t.Fatal("accepted an invalid project")
+	}
+	if routes, _ = readRoutes(filepath.Join(c.dir, "state", "caddy.json")); len(routes) != 0 {
+		t.Fatalf("rejected publish changed routes: %+v", routes)
+	}
+}
+
+func TestArtifactStoreMustBeASiteDirectory(t *testing.T) {
+	c := testConfig(t)
+	c.dir = filepath.Join(c.dir, "state")
+	_ = os.MkdirAll(c.dir, 0700)
+	if err := apply(c, []Route{{Name: "artifacts", Kind: "artifacts", Path: "/srv/victim/served"}}, true, func(...string) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := artifactStore(c); err == nil || !strings.Contains(err.Error(), "not an artifact store") {
+		t.Fatalf("accepted a foreign directory as store: %v", err)
 	}
 }
