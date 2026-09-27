@@ -162,7 +162,7 @@ func TestCollectFilters(t *testing.T) {
 	if c, err = collect([]string{dir, secret}, true); err != nil || c.inputs[len(c.inputs)-1].rel != "session-cookie.json" {
 		t.Fatalf("--allow-sensitive: %v", err)
 	}
-	for _, name := range []string{"app.env.local", "prod.env", "db.dump", "dump.sql", "dev.sqlite", "server.key", "cert.pem", "cert.p12", "trace.har", "SECRET.txt", "storageState.json", "e2e/storage-state.json", "auth.json", "results/trace.zip", "id_ed25519", "credentials.json", ".npmrc", "sub/.env", "secrets/db.json", "cookies/state.json", "session-token", "db.sqlite3", "dump.sql.gz", "terraform.tfstate.backup", "kubeconfig", "passwords.txt", "api_key.txt", "session.json", "vault.kdbx", "putty.ppk"} {
+	for _, name := range []string{"app.env.local", "prod.env", "db.dump", "dump.sql", "dev.sqlite", "server.key", "cert.pem", "cert.p12", "trace.har", "SECRET.txt", "storageState.json", "e2e/storage-state.json", "auth.json", "results/trace.zip", "id_ed25519", "credentials.json", ".npmrc", "sub/.env", "secrets/db.json", "cookies/state.json", "session-token", "db.sqlite3", "dump.sql.gz", "terraform.tfstate.backup", "kubeconfig", "passwords.txt", "api_key.txt", "session.json", "vault.kdbx", "putty.ppk", "cloud.cookie"} {
 		if !sensitive(name) {
 			t.Errorf("%s not flagged", name)
 		}

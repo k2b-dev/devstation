@@ -23,6 +23,10 @@ const help = `devstation — local services behind HTTPS
   dev artifacts [PROJECT] [--json]
   dev keep PROJECT/NAME [--json]
   dev unpublish PROJECT/NAME... | --expired [--json]
+  dev shot [LABEL=]URL... --out DIR [--themes light,dark] [--widths 1440,390]
+           [--cookie NAME=@FILE]... [--theme-cookie NAME] [--eval JS]
+           [--click SEL]... [--hover SEL] [--wait-for SEL] [--full-page]
+           [--height PX] [--scale N] [--browser PATH] [--timeout 90s] [--json]
   dev version
   dev update [VERSION]
 
@@ -80,6 +84,8 @@ func Run(args []string, version string, out io.Writer) error {
 			target = args[1]
 		}
 		return release.Update(target, out)
+	case "shot":
+		return runShot(*config, args[1:], out)
 	case "publish", "artifacts", "keep", "unpublish":
 		c, err := LoadConfig(*config)
 		if err != nil {

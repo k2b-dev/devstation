@@ -1,6 +1,6 @@
 ---
 name: devstation
-description: Expose local development servers or static files through an existing Devstation and Caddy setup, publish screenshots, plans, and HTML mockups as versioned pages, inspect routes, and remove previews. Use when a user asks for a named HTTPS preview on a Devstation host, or wants to see screenshots, a plan, a mockup, or a before/after comparison through a link.
+description: Expose local development servers or static files through an existing Devstation and Caddy setup, take screenshots of pages in light and dark at several widths, publish screenshots, plans, and HTML mockups as versioned pages, inspect routes, and remove previews. Use when a user asks for a named HTTPS preview on a Devstation host, or wants to see screenshots, a plan, a mockup, or a before/after comparison through a link.
 ---
 
 # Devstation
@@ -35,6 +35,33 @@ Verify both the loopback application and the returned HTTPS URL. Report DNS,
 certificate, upstream, or reachability failures rather than declaring success
 from CLI output alone. Do not use insecure TLS options to establish success.
 WebSockets are forwarded by Caddy.
+
+## Take screenshots
+
+`dev shot` replaces hand-written browser scripts. It writes one PNG per theme
+and width, named for the artifact gallery:
+
+```sh
+tmp=$(mktemp -d)
+auth=(--cookie session=@"$XDG_RUNTIME_DIR/app.cookie")
+dev shot board-empty=https://app.dev.example.com/board --out "$tmp/shots" "${auth[@]}" --json
+dev shot board-dialog=https://app.dev.example.com/board --click "#new-task" \
+  --wait-for "dialog[open]" --out "$tmp/shots" "${auth[@]}" --json
+```
+
+- One state per label (`<motif>-<state>=URL`). Options apply to every URL of a
+  command, so run one command per interaction. Use `--click`, `--hover`, and
+  `--wait-for` for dialogs, menus, and tooltips; `--full-page` for long pages.
+  The defaults are `--themes light,dark --widths 1440,390`.
+- Sign in with a cookie file that holds only the session value (mode 600,
+  outside the output folder). Get the session the way the application's own
+  docs describe, and never print or publish the value.
+- If an app reads its theme from a cookie, add `--theme-cookie NAME`.
+- Read the warnings: "shows … instead" usually means the session expired and
+  the images show a sign-in page. Renew the cookie instead of publishing them.
+  "still loading" or late content means adding `--wait-for` for the element
+  that proves the page is ready.
+- Capture only development instances, never production or real personal data.
 
 ## Share screenshots, plans, and mockups
 
@@ -77,9 +104,9 @@ Configuration defaults to `~/.config/devstation/config.toml` (or
 `dev --config /path/config.toml list --json`. Wildcard DNS, TLS renewal, VPN policy,
 and Caddy startup belong to the host setup, not individual previews.
 
-Use only `dev expose`, `dev serve`, `dev list`, `dev unexpose`, and the artifact
-commands (`dev publish`, `dev artifacts`, `dev keep`, `dev unpublish`) for
-routine preview work.
+Use only `dev expose`, `dev serve`, `dev list`, `dev unexpose`, `dev shot`, and
+the artifact commands (`dev publish`, `dev artifacts`, `dev keep`,
+`dev unpublish`) for routine preview work.
 Do not edit generated `state/caddy.json`, operate unrelated Caddy instances, or
 run commands with sudo. `--no-reload` is for initial provisioning only: it writes
 validated configuration but does not make a URL live. A failed update that reports
