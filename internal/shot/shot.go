@@ -416,7 +416,8 @@ func (b *browser) load(ctx context.Context, events *subscription, frameID, loade
 	start := time.Now()
 	loaded := false
 	var loadedAt, quietSince time.Time
-	inflight := map[string]string{}
+	type request struct{ url, loaderID string }
+	inflight := map[string]request{}
 	for {
 		var deadline time.Time
 		switch {
@@ -443,8 +444,8 @@ func (b *browser) load(ctx context.Context, events *subscription, frameID, loade
 			case !loaded:
 				warn("page still loading after %s; captured it as it was", loadWait)
 			case len(inflight) > 0:
-				for _, u := range inflight {
-					warn("still loading after %s: %s; use --wait-for for content that comes later", settleWait, u)
+				for _, r := range inflight {
+					warn("still loading after %s: %s; use --wait-for for content that comes later", settleWait, r.url)
 					break
 				}
 			}
@@ -461,6 +462,12 @@ func (b *browser) load(ctx context.Context, events *subscription, frameID, loade
 			}
 			if json.Unmarshal(m.Params, &p) == nil && p.Frame.ID == frameID && p.Frame.ParentID == "" && p.Frame.LoaderID != loaderID {
 				loaderID, loaded = p.Frame.LoaderID, false // a redirect by script or meta refresh
+				// Requests of the replaced document do not always report an end.
+				for id, r := range inflight {
+					if r.loaderID != loaderID {
+						delete(inflight, id)
+					}
+				}
 			}
 		case "Network.responseReceived":
 			var p struct {
@@ -485,6 +492,7 @@ func (b *browser) load(ctx context.Context, events *subscription, frameID, loade
 		case "Network.requestWillBeSent":
 			var p struct {
 				RequestID string `json:"requestId"`
+				LoaderID  string `json:"loaderId"`
 				Type      string `json:"type"`
 				Request   struct {
 					URL string `json:"url"`
@@ -492,7 +500,7 @@ func (b *browser) load(ctx context.Context, events *subscription, frameID, loade
 			}
 			// Live streams never finish; WebSockets do not appear here at all.
 			if json.Unmarshal(m.Params, &p) == nil && p.Type != "EventSource" && !strings.HasPrefix(p.Request.URL, "data:") {
-				inflight[p.RequestID] = p.Request.URL
+				inflight[p.RequestID] = request{p.Request.URL, p.LoaderID}
 			}
 		case "Network.loadingFinished", "Network.loadingFailed":
 			var p struct {
