@@ -152,7 +152,9 @@ successful first publish, Devstation adds the route `artifacts`, which serves
 the store's `site/` directory through a fixed `file_server` with
 `Cache-Control: no-cache` and `X-Content-Type-Options: nosniff`. From then on
 the route decides which store all artifact commands use, whatever
-`XDG_DATA_HOME` says, and publishes only write files without reloading Caddy.
+`XDG_DATA_HOME` says, and publishes only write files without reloading Caddy
+(once after an update from v0.4 or older, a publish reloads it to add the
+`dev daemon` proxy).
 If adding the route fails, the artifact is already stored; fix the cause and
 publish again. `dev expose` and `dev serve` refuse to replace `artifacts`;
 `dev unexpose artifacts` removes the route, and the next publish adds it again
@@ -271,7 +273,8 @@ background process of Devstation, which listens on the Unix socket
 `daemon.sock` next to Caddy's admin socket; everything else stays static. A
 publish updates an older `artifacts` route to this shape. Run the daemon as the
 same user as Caddy, for example with the
-[user unit](../examples/devstation-daemon.service):
+[user unit](../examples/devstation-daemon.service); like every artifact command,
+it takes the store from the route on each request:
 
 ```sh
 cp examples/devstation-daemon.service ~/.config/systemd/user/
@@ -279,6 +282,8 @@ systemctl --user daemon-reload
 systemctl --user enable --now devstation-daemon
 ```
 
+Pages published before v0.5 get the comment panel and the theme button with
+the artifact's next publish; their older version pages stay as they were.
 Without the daemon, pages still show existing comments and report that new
 ones cannot be sent. The daemon accepts only JSON requests whose `Origin`
 matches the host, so other sites cannot post through a visitor's browser.

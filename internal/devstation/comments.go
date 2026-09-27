@@ -91,7 +91,7 @@ func runComments(c Config, args []string, out io.Writer) error {
 		return json.NewEncoder(out).Encode(struct {
 			Project  string        `json:"project"`
 			Name     string        `json:"name"`
-			Open     int           `json:"open"`
+			Open     int           `json:"open_comments"`
 			Comments []commentJSON `json:"comments"`
 		}{p, n, artifacts.OpenComments(comments), list})
 	}

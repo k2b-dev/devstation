@@ -19,7 +19,8 @@ var digits = [10][5]uint8{
 	{7, 4, 7, 1, 7}, {7, 4, 7, 5, 7}, {7, 1, 1, 1, 1}, {7, 5, 7, 5, 7}, {7, 5, 7, 1, 7},
 }
 
-// maxAnnotatePixels bounds the memory for decoding one image, about 200 MB.
+// maxAnnotatePixels bounds the memory for one image: decoding plus the canvas
+// take 0.6 to 1 GB at the limit. A full-page screenshot at 2880 × 16384 fits.
 const maxAnnotatePixels = 50_000_000
 
 var (

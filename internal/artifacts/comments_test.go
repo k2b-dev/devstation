@@ -86,6 +86,24 @@ func TestCommentsLifecycle(t *testing.T) {
 	}
 }
 
+func TestResolveAfterCommentLimit(t *testing.T) {
+	s, _ := testStore(t)
+	publishShots(t, s)
+	c, err := s.AddComment("p", "n", "a-dark-1440.png", 1, nil, nil, "first")
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, _ := os.OpenFile(s.commentsPath("p", "n"), os.O_APPEND|os.O_WRONLY, 0600)
+	_, _ = f.WriteString(strings.Repeat("{}\n", maxCommentsFile/3+1))
+	f.Close()
+	if _, err = s.AddComment("p", "n", "a-dark-1440.png", 1, nil, nil, "second"); err == nil {
+		t.Fatal("accepted a comment beyond the limit")
+	}
+	if err = s.Resolve("p", "n", []string{c.ID}, true); err != nil {
+		t.Fatalf("resolving beyond the comment limit: %v", err)
+	}
+}
+
 func TestCommentHandler(t *testing.T) {
 	s, _ := testStore(t)
 	publishShots(t, s)

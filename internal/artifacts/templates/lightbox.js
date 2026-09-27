@@ -6,7 +6,7 @@
   var stage = q(".lb-stage"), name = q(".lb-name"), meta = q(".lb-meta"), count = q(".lb-count"), original = q(".lb-original");
   var list = q(".lb-list"), form = q(".lb-form"), text = q("textarea"), send = q(".lb-actions button"), note = q(".lb-pin-note"), status = q(".lb-error");
   var version = Number(box.dataset.version), api = box.dataset.api, source = box.dataset.comments;
-  var current = 0, comments = [], loaded = false, busy = false, pending = null, active = "";
+  var current = 0, comments = [], loaded = false, loadError = "", busy = false, pending = null, active = "";
   var drafts = {}; // unsent text and pin per file while browsing
 
   function href(f) { return f.querySelector("a.thumb").getAttribute("href"); }
@@ -43,7 +43,7 @@
         if (r.status === 404) return ""; // no comments yet
         throw new Error("Could not load comments (HTTP " + r.status + ").");
       }, function () { throw new Error("Could not load comments."); })
-      .then(function (body) { comments = parse(body); }, showError)
+      .then(function (body) { comments = parse(body); loadError = ""; }, function (err) { loadError = err.message; showError(err); })
       .then(function () {
         loaded = true;
         badges();
@@ -107,7 +107,7 @@
     list.replaceChildren();
     var path = items[current].id;
     var shown = forPath(path).sort(function (a, b) { return (b.version === version) - (a.version === version); });
-    if (!shown.length) list.appendChild(el("li", "empty", loaded ? "No comments yet." : "Loading comments…"));
+    if (!shown.length) list.appendChild(el("li", "empty", !loaded ? "Loading comments…" : loadError ? "Comments could not be loaded." : "No comments yet."));
     shown.forEach(function (c) {
       var li = el("li", (c.resolved ? "resolved" : "") + (c.id === active ? " active" : ""));
       li.dataset.id = c.id;
@@ -124,6 +124,7 @@
         post(api + "/resolve", { ids: [c.id], resolved: check.checked })
           .then(load, function (err) { showError(err); render(); })
           .then(function () { // the list was drawn anew; keep the keyboard focus
+            if (document.activeElement && document.activeElement !== document.body) return;
             [].slice.call(list.children).forEach(function (li) {
               if (li.dataset.id === c.id) li.querySelector("input").focus();
             });
@@ -176,7 +177,7 @@
     text.value = draft.text || "";
     pending = draft.pending || null;
     active = "";
-    status.textContent = "";
+    status.textContent = loadError;
     name.textContent = f.dataset.name;
     meta.textContent = [f.dataset.section, f.dataset.row, f.dataset.col].filter(Boolean).join(" · ");
     count.textContent = current + 1 + " / " + items.length;
@@ -200,13 +201,13 @@
     send.disabled = true;
     status.textContent = "";
     post(api, body).then(function () {
-      // Clear only what was sent: the viewer may show another file by now.
-      if (items[current].id === path && text.value.trim() === sent) {
+      // Clear only what was sent: the viewer may show another file or be
+      // closed by now.
+      if (box.open && items[current].id === path && text.value.trim() === sent) {
         text.value = "";
         pending = null;
-      } else if (drafts[path] && drafts[path].text.trim() === sent) {
-        delete drafts[path];
       }
+      if (drafts[path] && drafts[path].text.trim() === sent) delete drafts[path];
       return load();
     }, showError).then(function () {
       busy = false;
@@ -244,13 +245,14 @@
     items[current].querySelector("a.thumb").focus({ preventScroll: true });
     items[current].scrollIntoView({ block: "center" });
   });
-  var startX = null;
-  stage.addEventListener("touchstart", function (e) { startX = e.touches.length === 1 ? e.touches[0].clientX : null; }, { passive: true });
+  // Only a mostly horizontal swipe changes the image; scrolling a tall one does not.
+  var start = null;
+  stage.addEventListener("touchstart", function (e) { start = e.touches.length === 1 ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : null; }, { passive: true });
   stage.addEventListener("touchend", function (e) {
-    if (startX === null) return;
-    var dx = e.changedTouches[0].clientX - startX;
-    startX = null;
-    if (Math.abs(dx) > 60) show(current + (dx < 0 ? 1 : -1));
+    if (start === null) return;
+    var dx = e.changedTouches[0].clientX - start.x, dy = e.changedTouches[0].clientY - start.y;
+    start = null;
+    if (Math.abs(dx) > 60 && Math.abs(dx) > 2 * Math.abs(dy)) show(current + (dx < 0 ? 1 : -1));
   });
   var target = location.hash.slice(1);
   try { target = decodeURIComponent(target); } catch (e) { /* keep the raw anchor */ }

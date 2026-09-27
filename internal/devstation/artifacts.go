@@ -40,7 +40,7 @@ type artifactJSON struct {
 	Comments   int        `json:"open_comments"`
 }
 
-func describe(base string, m artifacts.Meta) artifactJSON {
+func describe(store artifacts.Store, base string, m artifacts.Meta) artifactJSON {
 	v := m.Versions[len(m.Versions)-1]
 	out := artifactJSON{
 		Project: m.Project, Name: m.Name, Title: m.Title, Version: v.N,
@@ -51,6 +51,9 @@ func describe(base string, m artifacts.Meta) artifactJSON {
 	if !m.Keep {
 		e := m.Expires()
 		out.Expires = &e
+	}
+	if cs, err := store.Comments(m.Project, m.Name); err == nil {
+		out.Comments = artifacts.OpenComments(cs)
 	}
 	return out
 }
@@ -155,7 +158,7 @@ func runArtifacts(c Config, args []string, out io.Writer) error {
 		for _, ref := range r.Removed {
 			fmt.Fprintln(stderr, "removed expired artifact:", ref)
 		}
-		d := describe(base, r.Meta)
+		d := describe(store, base, r.Meta)
 		if *asJSON {
 			return json.NewEncoder(out).Encode(struct {
 				artifactJSON
@@ -185,11 +188,7 @@ func runArtifacts(c Config, args []string, out io.Writer) error {
 		}
 		list := []artifactJSON{}
 		for _, m := range metas {
-			d := describe(base, m)
-			if cs, err := store.Comments(m.Project, m.Name); err == nil {
-				d.Comments = artifacts.OpenComments(cs)
-			}
-			list = append(list, d)
+			list = append(list, describe(store, base, m))
 		}
 		if *asJSON {
 			return json.NewEncoder(out).Encode(list)
@@ -218,7 +217,7 @@ func runArtifacts(c Config, args []string, out io.Writer) error {
 			return err
 		}
 		if *asJSON {
-			return json.NewEncoder(out).Encode(describe(base, m))
+			return json.NewEncoder(out).Encode(describe(store, base, m))
 		}
 		fmt.Fprintln(out, "Keeping", p+"/"+n)
 		return nil

@@ -23,8 +23,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/k2b-dev/devstation/internal/artifacts"
 )
 
 func TestCaddyIntegration(t *testing.T) {
@@ -223,11 +221,10 @@ func TestCaddyIntegration(t *testing.T) {
 		t.Fatal("root index misses the project")
 	}
 	// Comments reach `dev daemon` through Caddy on the same origin.
-	site := filepath.Join(configDir, "data", "devstation", "artifacts", "site")
 	daemonCtx, stopDaemon := context.WithCancel(context.Background())
 	served := make(chan error, 1)
 	go func() {
-		served <- serveDaemon(daemonCtx, artifacts.Store{Root: filepath.Dir(site)}, daemonSocket(c.dir), io.Discard)
+		served <- serveDaemon(daemonCtx, daemonHandler(c), daemonSocket(c.dir), io.Discard)
 	}()
 	defer func() { stopDaemon(); <-served }()
 	post := func(path, body, origin string) int {

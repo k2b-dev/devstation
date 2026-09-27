@@ -488,11 +488,11 @@ func TestConcurrentPublish(t *testing.T) {
 func TestHeadingIDs(t *testing.T) {
 	published := map[string]bool{"a.md": true, "b.md": true}
 	out, _, _ := renderDocs([]parsedDocInput{
-		{"a.md", []byte("# Größe für #322\n\n## Files\n\n## Overview\n\n[b](b.md#überblick) [b-over](b.md#overview) [own](#overview)\n")},
+		{"a.md", []byte("# Größe für #322\n\n## Files\n\n## Theme\n\n## Lightbox\n\n## Overview\n\n[b](b.md#überblick) [b-over](b.md#overview) [own](#overview)\n")},
 		{"b.md", []byte("## Überblick\n\n## Größe für #322\n\n## Overview\n\n## Overview\n\n[own](#overview) [second](#overview-1) [a](a.md)\n")},
 	}, "./", published)
 	a, b := out[0], out[1]
-	for _, want := range []string{`id="größe-für-322"`, `id="files-1"`, `id="overview"`, `href="#%C3%BCberblick"`, `href="#overview-1">b-over`, `href="#overview">own`} {
+	for _, want := range []string{`id="größe-für-322"`, `id="files-1"`, `id="theme-1"`, `id="lightbox-1"`, `id="overview"`, `href="#%C3%BCberblick"`, `href="#overview-1">b-over`, `href="#overview">own`} {
 		if !strings.Contains(a, want) {
 			t.Fatalf("a lacks %s: %s", want, a)
 		}
