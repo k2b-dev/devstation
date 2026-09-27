@@ -13,6 +13,21 @@ import (
 	"strings"
 )
 
+// disc draws a filled circle with a white ring.
+func disc(img *image.RGBA, cx, cy, r int, fill color.RGBA) {
+	for y := -r - 2; y <= r+2; y++ {
+		for x := -r - 2; x <= r+2; x++ {
+			d := x*x + y*y
+			switch {
+			case d <= r*r:
+				img.Set(cx+x, cy+y, fill)
+			case d <= (r+2)*(r+2):
+				img.Set(cx+x, cy+y, pinBorder)
+			}
+		}
+	}
+}
+
 // digits is a 3×5 bitmap font; each row is three bits, most significant left.
 var digits = [10][5]uint8{
 	{7, 5, 5, 5, 7}, {2, 6, 2, 2, 7}, {7, 1, 7, 4, 7}, {7, 1, 7, 1, 7}, {5, 5, 7, 1, 1},
@@ -74,7 +89,7 @@ func (s Store) Annotate(p, n string, comments []Comment, dir string) (map[string
 			}
 			cx := b.Min.X + int(*c.X*float64(b.Dx()))
 			cy := b.Min.Y + int(*c.Y*float64(b.Dy()))
-			drawPin(canvas, cx, cy, radius, c.Number, fill)
+			drawMarker(canvas, cx, cy, radius, c.Number, fill)
 		}
 		out := filepath.Join(dir, filepath.FromSlash(key))
 		if !strings.EqualFold(filepath.Ext(out), ".png") {
@@ -103,18 +118,21 @@ func (s Store) Annotate(p, n string, comments []Comment, dir string) (map[string
 	return written, nil
 }
 
-func drawPin(img *image.RGBA, cx, cy, r, number int, fill color.RGBA) {
-	for y := -r - 2; y <= r+2; y++ {
-		for x := -r - 2; x <= r+2; x++ {
-			d := x*x + y*y
-			switch {
-			case d <= r*r:
-				img.Set(cx+x, cy+y, fill)
-			case d <= (r+2)*(r+2):
-				img.Set(cx+x, cy+y, pinBorder)
-			}
-		}
+// drawMarker draws a dot on the commented spot and the numbered circle next to
+// it, up and to the right unless that leaves the image, so the spot itself
+// stays visible.
+func drawMarker(img *image.RGBA, cx, cy, r, number int, fill color.RGBA) {
+	b := img.Bounds()
+	dx, dy := r, -r
+	if cx+2*r+2 > b.Max.X {
+		dx = -r
 	}
+	if cy-2*r-2 < b.Min.Y {
+		dy = r
+	}
+	disc(img, cx, cy, max(3, r/4), fill)
+	cx, cy = cx+dx, cy+dy
+	disc(img, cx, cy, r, fill)
 	text := strconv.Itoa(number)
 	scale := max(1, r*9/10/5) // digit height about 90% of the radius
 	width := len(text)*4*scale - scale

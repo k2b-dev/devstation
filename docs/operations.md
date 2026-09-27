@@ -248,9 +248,11 @@ publish only what everyone who can reach the listener may see.
 
 In the image viewer, click the image to pin a spot, type a comment, and send it
 with the button or Ctrl/⌘+Enter. Comments without a pin are fine too. Each
-comment gets a number per image and version, shown in a circle on the image.
-Thumbnails show how many comments are open, and the viewer lists all comments
-of an image with their version; "done" marks one as resolved. Pages switch
+comment gets a number per image and version, shown in a circle next to a dot
+on the pinned spot. Thumbnails show how many comments are open, and the viewer
+lists all comments of an image with their version; the checkbox marks one as
+done, and the trash button (click twice) deletes it for good. A deleted
+comment keeps its number, so the others keep theirs. Pages switch
 between light, dark, and the system setting with the button at the top right;
 the choice is stored in the browser and applied before the page is drawn.
 
@@ -291,7 +293,8 @@ There is no login: everyone who can reach the listener can comment, as they
 can read. Comments are plain text of up to 4000 characters without control
 characters (line breaks and tabs are fine) and are shown as text, never as
 HTML. They are stored as `comments.jsonl` in the artifact's directory,
-readable at `/PROJECT/NAME/comments.jsonl`, and removed with the artifact. One
+readable at `/PROJECT/NAME/comments.jsonl`, and removed with the artifact;
+deleting a comment rewrites the file without its text. One
 artifact takes new comments until it holds 1 MiB of them; marking comments
 done keeps working beyond that.
 

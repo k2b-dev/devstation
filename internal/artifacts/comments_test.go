@@ -86,6 +86,46 @@ func TestCommentsLifecycle(t *testing.T) {
 	}
 }
 
+func TestDeleteKeepsNumbers(t *testing.T) {
+	s, _ := testStore(t)
+	publishShots(t, s)
+	var ids []string
+	for _, text := range []string{"one", "two secret", "three"} {
+		c, err := s.AddComment("p", "n", "a-dark-1440.png", 1, nil, nil, text)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, c.ID)
+	}
+	if err := s.Resolve("p", "n", ids[1:2], true); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Delete("p", "n", ids[1:2]); err != nil {
+		t.Fatal(err)
+	}
+	cs, err := s.Comments("p", "n")
+	if err != nil || len(cs) != 2 || cs[0].Number != 1 || cs[1].Number != 3 {
+		t.Fatalf("numbers after delete: %+v %v", cs, err)
+	}
+	// A new comment never takes the deleted number.
+	if c, err := s.AddComment("p", "n", "a-dark-1440.png", 1, nil, nil, "four"); err != nil || c.Number != 4 {
+		t.Fatalf("after delete: %+v %v", c, err)
+	}
+	data, _ := os.ReadFile(s.commentsPath("p", "n"))
+	if strings.Contains(string(data), "secret") || strings.Count(string(data), ids[1]) != 1 {
+		t.Fatalf("deleted comment left traces: %s", data)
+	}
+	if err = s.Delete("p", "n", ids[1:2]); err == nil {
+		t.Fatal("deleted a comment twice")
+	}
+	if err = s.Delete("p", "n", []string{ids[0], "nope"}); err == nil {
+		t.Fatal("accepted an unknown comment")
+	}
+	if cs, _ = s.Comments("p", "n"); len(cs) != 3 {
+		t.Fatalf("a failed delete changed comments: %+v", cs)
+	}
+}
+
 func TestResolveAfterCommentLimit(t *testing.T) {
 	s, _ := testStore(t)
 	publishShots(t, s)
@@ -140,7 +180,9 @@ func TestCommentHandler(t *testing.T) {
 		"bad json":       {"POST", "/p/n", `{`, good, 400},
 		"resolve":        {"POST", "/p/n/resolve", `{"ids":["` + c.ID + `"],"resolved":true}`, good, 204},
 		"resolve empty":  {"POST", "/p/n/resolve", `{"ids":[]}`, good, 400},
-		"other action":   {"POST", "/p/n/delete", `{}`, good, 404},
+		"delete unknown": {"POST", "/p/n/delete", `{"ids":["nope"]}`, good, 400},
+		"delete foreign": {"POST", "/p/n/delete", `{"ids":["` + c.ID + `"]}`, map[string]string{"Content-Type": "application/json", "Origin": "https://evil.dev.example.com"}, 403},
+		"other action":   {"POST", "/p/n/purge", `{}`, good, 404},
 	} {
 		if w := do(tc.method, tc.path, tc.body, tc.headers); w.Code != tc.code {
 			t.Errorf("%s: %d %s", name, w.Code, w.Body)
@@ -173,10 +215,17 @@ func TestAnnotate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The pin is drawn at 25 % / 50 %; the digit's white strokes sit at its center.
-	r, g, b, _ := img.At(50-10, 50).RGBA()
-	if r>>8 != 0xc6 || g>>8 != 0x2f || b>>8 != 0x35 {
-		t.Fatalf("no pin at the comment position: %x %x %x (%s)", r>>8, g>>8, b>>8, c.ID)
+	// A dot marks the spot at 25 % / 50 %; the numbered circle (radius 14)
+	// sits up and to the right, where its white digit strokes are centered.
+	isPin := func(x, y int) bool {
+		r, g, b, _ := img.At(x, y).RGBA()
+		return r>>8 == 0xc6 && g>>8 == 0x2f && b>>8 == 0x35
+	}
+	if !isPin(50, 50) || !isPin(64+10, 36) {
+		t.Fatalf("no marker at the comment position (%s)", c.ID)
+	}
+	if r, _, _, _ := img.At(50-6, 50).RGBA(); r>>8 != 30 {
+		t.Fatal("the marker covers the commented spot")
 	}
 	if r, _, _, _ := img.At(190, 10).RGBA(); r>>8 != 30 {
 		t.Fatal("image outside the pin changed")

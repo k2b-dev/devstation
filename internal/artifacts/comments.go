@@ -2,6 +2,7 @@ package artifacts
 
 import (
 	"bufio"
+	"bytes"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -35,10 +36,11 @@ type Comment struct {
 	Resolved bool      `json:"resolved"`
 }
 
-// commentEvent is one line of comments.jsonl: a comment, or a change of its
-// resolved state. The log is append-only and removed with the artifact.
+// commentEvent is one line of comments.jsonl: a comment, a change of its
+// resolved state, or the place of a deleted comment. New events are appended;
+// only deleting rewrites the file. It is removed with the artifact.
 type commentEvent struct {
-	Type     string    `json:"type"` // comment or resolve
+	Type     string    `json:"type"` // comment, resolve, or deleted
 	ID       string    `json:"id"`
 	Path     string    `json:"path,omitempty"`
 	Version  int       `json:"version,omitempty"`
@@ -85,6 +87,8 @@ func (s Store) Comments(p, n string) ([]Comment, error) {
 			numbers[key]++
 			index[e.ID] = len(comments)
 			comments = append(comments, Comment{ID: e.ID, Path: e.Path, Version: e.Version, Number: numbers[key], X: e.X, Y: e.Y, Text: e.Text, At: e.At})
+		case "deleted": // keeps its number, so the others keep theirs
+			numbers[fmt.Sprintf("%d/%s", e.Version, e.Path)]++
 		case "resolve":
 			if i, ok := index[e.ID]; ok {
 				comments[i].Resolved = e.Resolved
@@ -174,6 +178,53 @@ func (s Store) Resolve(p, n string, ids []string, resolved bool) error {
 		}
 	}
 	return nil
+}
+
+// Delete removes comments for good. Each one leaves a "deleted" line with only
+// its file and version, so the other comments keep their numbers and new ones
+// never reuse it; its text and resolve events are gone.
+func (s Store) Delete(p, n string, ids []string) error {
+	unlock, err := s.lock()
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	if _, err = s.readMeta(p, n); err != nil {
+		return fmt.Errorf("artifact %s/%s does not exist", p, n)
+	}
+	path := s.commentsPath(p, n)
+	data, err := os.ReadFile(path)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	drop, found := map[string]bool{}, map[string]bool{}
+	for _, id := range ids {
+		drop[id] = true
+	}
+	var out bytes.Buffer
+	for _, line := range bytes.Split(data, []byte("\n")) {
+		var e commentEvent
+		if json.Unmarshal(line, &e) != nil {
+			continue // empty or torn
+		}
+		if drop[e.ID] {
+			if e.Type != "comment" {
+				continue
+			}
+			found[e.ID] = true
+			if line, err = json.Marshal(commentEvent{Type: "deleted", ID: e.ID, Path: e.Path, Version: e.Version, At: s.now()}); err != nil {
+				return err
+			}
+		}
+		out.Write(line)
+		out.WriteByte('\n')
+	}
+	for _, id := range ids {
+		if !found[id] {
+			return fmt.Errorf("%s/%s has no comment %q", p, n, id)
+		}
+	}
+	return writeFileAtomic(path, out.Bytes())
 }
 
 // appendComment writes one event unless the log is larger than limit. Callers

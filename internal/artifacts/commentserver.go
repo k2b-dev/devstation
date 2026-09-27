@@ -16,6 +16,7 @@ const CommentsPrefix = "/_devstation/comments/"
 //
 //	POST /PROJECT/NAME          {"path", "version", "x", "y", "text"}
 //	POST /PROJECT/NAME/resolve  {"ids": [...], "resolved": true}
+//	POST /PROJECT/NAME/delete   {"ids": [...]}
 //
 // Pages read comments from the artifact's comments.jsonl. Only same-origin
 // JSON requests are accepted, so other sites cannot post through a visitor's
@@ -59,7 +60,7 @@ func CommentHandler(s Store) http.Handler {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusCreated)
 			_ = json.NewEncoder(w).Encode(c)
-		case parts[2] == "resolve":
+		case parts[2] == "resolve" || parts[2] == "delete":
 			var in struct {
 				IDs      []string `json:"ids"`
 				Resolved bool     `json:"resolved"`
@@ -68,7 +69,13 @@ func CommentHandler(s Store) http.Handler {
 				fail(w, http.StatusBadRequest, "invalid JSON")
 				return
 			}
-			if err := s.Resolve(p, n, in.IDs, in.Resolved); err != nil {
+			var err error
+			if parts[2] == "delete" {
+				err = s.Delete(p, n, in.IDs)
+			} else {
+				err = s.Resolve(p, n, in.IDs, in.Resolved)
+			}
+			if err != nil {
 				fail(w, http.StatusBadRequest, err.Error())
 				return
 			}
