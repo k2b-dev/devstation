@@ -1,0 +1,122 @@
+{{define "head"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="robots" content="noindex">
+<meta name="referrer" content="no-referrer">
+<title>{{.Title}}</title>
+<style>{{css}}</style>
+</head>
+<body>
+<header>
+<nav>{{range $i, $c := .Crumbs}}{{if $i}}<span class="sep">/</span>{{end}}{{if $c.Href}}<a href="{{$c.Href}}">{{$c.Label}}</a>{{else}}<span>{{$c.Label}}</span>{{end}}{{end}}</nav>
+</header>
+<main>
+{{end}}
+
+{{define "foot"}}
+</main>
+<script>document.querySelectorAll("time[datetime]").forEach(function(t){t.textContent=new Date(t.dateTime).toLocaleString(undefined,{dateStyle:"medium",timeStyle:"short"})})</script>
+</body>
+</html>
+{{end}}
+
+{{define "time"}}<time datetime="{{.Format "2006-01-02T15:04:05Z07:00"}}">{{.Format "2006-01-02 15:04 MST"}}</time>{{end}}
+
+{{define "lifecycle"}}{{if .Keep}}<span class="badge">kept</span>{{else}}<span class="muted">expires {{template "time" .Expires}}</span>{{end}}{{end}}
+
+{{define "version"}}{{template "head" .}}
+<section class="intro">
+<h1>{{.Heading}}</h1>
+<p class="meta">
+<span>{{.Project}}/{{.Name}}</span>
+<span>v{{.Version}}{{if .IsCurrent}} · latest{{else}} · <a href="{{.LatestHref}}">latest version</a>{{end}}</span>
+<span>{{template "time" .At}}</span>
+{{if .Link}}<span><a href="{{.Link}}" rel="noreferrer">{{.Link}}</a></span>{{end}}
+</p>
+{{if gt (len .Versions) 1}}<p class="versions">versions {{range .Versions}}{{if .Current}}<strong>v{{.N}}</strong>{{else}}<a href="{{.Href}}">v{{.N}}</a>{{end}} {{end}}{{if .CompareHref}}· <a href="{{.CompareHref}}">compare v{{.Prev}} → v{{.Version}}</a>{{end}}</p>{{end}}
+</section>
+{{range .Docs}}<article class="doc" id="{{.ID}}">
+{{if $.MultiDoc}}<p class="path"><a href="#{{.ID}}">{{.ID}}</a></p>{{end}}
+{{.HTML}}
+</article>
+{{end}}
+{{range .Sections}}<section class="gallery" id="{{.ID}}">
+{{if .Dir}}<h2><a href="#{{.ID}}">{{.Dir}}/</a></h2>{{end}}
+{{if .Rows}}<div class="matrix" style="{{.Grid}}">
+<div class="corner"></div>{{range .Columns}}<div class="col">{{.}}</div>{{end}}
+{{range .Rows}}<div class="rowlabel">{{if .Label}}{{.Label}}{{else}}—{{end}}</div>{{range .Cells}}{{template "cell" .}}{{end}}
+{{end}}</div>{{end}}
+{{if .Plain}}<div class="plain">{{range .Plain}}{{template "cell" .}}{{end}}</div>{{end}}
+{{if .Other}}<details class="files"{{if lt (len .Other) 12}} open{{end}}><summary>{{len .Other}} other file{{if gt (len .Other) 1}}s{{end}}</summary><ul>{{range .Other}}<li><a href="{{.Href}}">{{.Name}}</a> <span class="muted">{{.Size}}</span></li>{{end}}</ul></details>{{end}}
+</section>
+{{end}}
+{{if and (not .Docs) (not .Sections)}}<p class="muted">This version has no files to show.</p>{{end}}
+{{if .HasMedia}}<dialog id="lightbox" class="lightbox" aria-label="Image viewer">
+<div class="lb-bar"><span class="lb-count"></span><span class="lb-name"></span><span class="lb-meta"></span><a class="lb-original" target="_blank" rel="noopener">original</a><button type="button" class="lb-close" aria-label="Close (Esc)">✕</button></div>
+<div class="lb-media"></div>
+<button type="button" class="lb-nav lb-prev" aria-label="Previous (←)">‹</button>
+<button type="button" class="lb-nav lb-next" aria-label="Next (→)">›</button>
+</dialog>
+<script>{{lightbox}}</script>{{end}}
+{{template "foot" .}}{{end}}
+
+{{define "cell"}}{{if .Missing}}<div class="cell missing"></div>{{else}}<figure class="cell" id="{{.ID}}" data-name="{{.Name}}"{{if .Row}} data-row="{{.Row}}"{{end}}{{if .Col}} data-col="{{.Col}}"{{end}}{{if .Section}} data-section="{{.Section}}/"{{end}}{{if .Video}} data-video="1"{{end}}>
+<a class="thumb" href="{{.Href}}">{{if .Video}}<video src="{{.Href}}" muted playsinline preload="metadata"></video>{{else}}<img src="{{.Href}}" alt="{{.Name}}" loading="lazy" decoding="async"{{if .Width}} width="{{.Width}}" height="{{.Height}}"{{end}}>{{end}}</a>
+<figcaption><a class="anchor" href="#{{.ID}}">#</a> <span class="name">{{.Name}}</span>{{range .Attach}} <a href="{{.Href}}">{{.Name}}</a>{{end}}</figcaption>
+</figure>{{end}}{{end}}
+
+{{define "redirect"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="robots" content="noindex">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="refresh" content="0; url={{.Target}}">
+<title>{{.Title}}</title>
+<script>location.replace({{.Target}} + location.hash)</script>
+</head>
+<body><p><a href="{{.Target}}">{{.Title}}</a></p></body>
+</html>
+{{end}}
+
+{{define "compare"}}{{template "head" .}}
+<section class="intro">
+<h1>{{.Heading}}</h1>
+<p class="meta"><span>{{.Project}}/{{.Name}}</span><span><a href="{{.AHref}}">v{{.A}}</a> → <a href="{{.BHref}}">v{{.B}}</a></span>
+<span>{{len .Changed}} changed · {{len .Added}} added · {{len .Removed}} removed · {{.Unchanged}} unchanged</span></p>
+</section>
+{{range .Changed}}<section class="pair" id="{{.ID}}">
+<h2><a href="#{{.ID}}">{{.Path}}</a></h2>
+{{if .Slider}}<div class="slider" style="--pos: 50%">
+<label class="muted"><span>v{{$.A}}</span><input type="range" min="0" max="100" value="50" aria-label="Move the divider between v{{$.A}} (left) and v{{$.B}} (right)" oninput="this.closest('.slider').style.setProperty('--pos', this.value + '%')"><span>v{{$.B}}</span></label>
+<div class="stack"><img src="{{.AHref}}" alt="v{{$.A}}" width="{{.Width}}" height="{{.Height}}" loading="lazy" decoding="async">
+<img class="after" src="{{.BHref}}" alt="v{{$.B}}" width="{{.Width}}" height="{{.Height}}" loading="lazy" decoding="async"></div>
+</div>{{end}}
+{{if .Image}}<div class="side"><figure><a href="{{.AHref}}"><img src="{{.AHref}}" alt="v{{$.A}}" loading="lazy"></a><figcaption>v{{$.A}}</figcaption></figure><figure><a href="{{.BHref}}"><img src="{{.BHref}}" alt="v{{$.B}}" loading="lazy"></a><figcaption>v{{$.B}}</figcaption></figure></div>
+{{else}}<p><a href="{{.AHref}}">v{{$.A}}</a> · <a href="{{.BHref}}">v{{$.B}}</a></p>{{end}}
+</section>
+{{end}}
+{{if .Added}}<section class="files"><h2>Added in v{{.B}}</h2><ul>{{range .Added}}<li><a href="{{.Href}}">{{.Name}}</a> <span class="muted">{{.Size}}</span></li>{{end}}</ul></section>{{end}}
+{{if .Removed}}<section class="files"><h2>Removed since v{{.A}}</h2><ul>{{range .Removed}}<li><a href="{{.Href}}">{{.Name}}</a> <span class="muted">{{.Size}}</span></li>{{end}}</ul></section>{{end}}
+{{if and (not .Changed) (not .Added) (not .Removed)}}<p class="muted">No differences.</p>{{end}}
+{{template "foot" .}}{{end}}
+
+{{define "project"}}{{template "head" .}}
+<section class="intro"><h1>{{.Project}}</h1></section>
+{{if .Cards}}<ul class="cards">{{range .Cards}}<li class="card">
+<a class="title" href="{{.Href}}">{{.Heading}}</a>
+<p class="meta"><span>{{.Name}}</span><span>v{{.Versions}}</span><span>{{.Summary}}</span><span>{{.Size}}</span></p>
+<p class="meta"><span>updated {{template "time" .Updated}}</span><span>{{template "lifecycle" .Life}}</span>{{if .Link}}<span><a href="{{.Link}}" rel="noreferrer">{{.Link}}</a></span>{{end}}</p>
+</li>{{end}}</ul>{{else}}<p class="muted">No artifacts in this project.</p>{{end}}
+{{template "foot" .}}{{end}}
+
+{{define "root"}}{{template "head" .}}
+<section class="intro"><h1>Artifacts</h1></section>
+{{if .Projects}}<ul class="cards">{{range .Projects}}<li class="card">
+<a class="title" href="{{.Href}}">{{.Name}}</a>
+<p class="meta"><span>{{.Count}} artifact{{if gt .Count 1}}s{{end}}</span><span>updated {{template "time" .Updated}}</span></p>
+</li>{{end}}</ul>{{else}}<p class="muted">Nothing published yet. Run <code>dev publish PATH --project P --name N</code>.</p>{{end}}
+{{template "foot" .}}{{end}}

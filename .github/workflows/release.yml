@@ -27,7 +27,7 @@ jobs:
       - name: Test release assets and routing
         run: |
           mkdir -p "$RUNNER_TEMP/caddy"
-          GOBIN="$RUNNER_TEMP/caddy" go install github.com/caddyserver/caddy/v2/cmd/caddy@v2.11.2
+          GOBIN="$RUNNER_TEMP/caddy" go install github.com/caddyserver/caddy/v2/cmd/caddy@v2.11.4
           PATH="$RUNNER_TEMP/caddy:$PATH" scripts/integration.sh
           VERSION="$RELEASE_VERSION" scripts/test-install.sh
         env:

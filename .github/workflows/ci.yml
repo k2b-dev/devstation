@@ -21,7 +21,7 @@ jobs:
       - name: Install Caddy for integration test
         run: |
           mkdir -p "$RUNNER_TEMP/caddy"
-          GOBIN="$RUNNER_TEMP/caddy" go install github.com/caddyserver/caddy/v2/cmd/caddy@v2.11.2
+          GOBIN="$RUNNER_TEMP/caddy" go install github.com/caddyserver/caddy/v2/cmd/caddy@v2.11.4
           echo "$RUNNER_TEMP/caddy" >> "$GITHUB_PATH"
       - run: scripts/integration.sh
       - run: scripts/test-install.sh
