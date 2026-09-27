@@ -37,9 +37,10 @@ type artifactJSON struct {
 	Keep       bool       `json:"keep"`
 	Updated    time.Time  `json:"updated"`
 	Expires    *time.Time `json:"expires"`
+	Comments   int        `json:"open_comments"`
 }
 
-func describe(base string, m artifacts.Meta) artifactJSON {
+func describe(store artifacts.Store, base string, m artifacts.Meta) artifactJSON {
 	v := m.Versions[len(m.Versions)-1]
 	out := artifactJSON{
 		Project: m.Project, Name: m.Name, Title: m.Title, Version: v.N,
@@ -50,6 +51,9 @@ func describe(base string, m artifacts.Meta) artifactJSON {
 	if !m.Keep {
 		e := m.Expires()
 		out.Expires = &e
+	}
+	if cs, err := store.Comments(m.Project, m.Name); err == nil {
+		out.Comments = artifacts.OpenComments(cs)
 	}
 	return out
 }
@@ -137,12 +141,13 @@ func runArtifacts(c Config, args []string, out io.Writer) error {
 		if err != nil {
 			return err
 		}
-		if !routed {
-			// The files are in place before the route appears; a rejected
-			// publish never reloads Caddy.
-			if err = ensureArtifactsRoute(c, store.Site(), runCaddy); err != nil {
+		// The files are in place before the route appears or is updated, so a
+		// rejected publish never reloads Caddy.
+		if err = ensureArtifactsRoute(c, store.Site(), runCaddy); err != nil {
+			if !routed {
 				return fmt.Errorf("published %s/%s, but it is not served yet: the %q route could not be added (%w); fix the cause and publish again", o.Project, o.Name, artifactsRoute, err)
 			}
+			fmt.Fprintf(stderr, "warning: published, but updating the %q route failed: %v\n", artifactsRoute, err)
 		}
 		for _, s := range r.Skipped {
 			fmt.Fprintln(stderr, "skipped (hidden or not a regular file):", s)
@@ -153,7 +158,7 @@ func runArtifacts(c Config, args []string, out io.Writer) error {
 		for _, ref := range r.Removed {
 			fmt.Fprintln(stderr, "removed expired artifact:", ref)
 		}
-		d := describe(base, r.Meta)
+		d := describe(store, base, r.Meta)
 		if *asJSON {
 			return json.NewEncoder(out).Encode(struct {
 				artifactJSON
@@ -183,7 +188,7 @@ func runArtifacts(c Config, args []string, out io.Writer) error {
 		}
 		list := []artifactJSON{}
 		for _, m := range metas {
-			list = append(list, describe(base, m))
+			list = append(list, describe(store, base, m))
 		}
 		if *asJSON {
 			return json.NewEncoder(out).Encode(list)
@@ -192,6 +197,9 @@ func runArtifacts(c Config, args []string, out io.Writer) error {
 			life := "kept"
 			if a.Expires != nil {
 				life = "expires " + a.Expires.Format("2006-01-02")
+			}
+			if a.Comments > 0 {
+				life += fmt.Sprintf(", %d open comments", a.Comments)
 			}
 			fmt.Fprintf(out, "%s/%s\tv%d\t%s\t%s\t%s\n", a.Project, a.Name, a.Version, a.Summary, life, a.URL)
 		}
@@ -209,7 +217,7 @@ func runArtifacts(c Config, args []string, out io.Writer) error {
 			return err
 		}
 		if *asJSON {
-			return json.NewEncoder(out).Encode(describe(base, m))
+			return json.NewEncoder(out).Encode(describe(store, base, m))
 		}
 		fmt.Fprintln(out, "Keeping", p+"/"+n)
 		return nil
@@ -235,8 +243,9 @@ func runArtifacts(c Config, args []string, out io.Writer) error {
 	return fmt.Errorf("unknown command %q", args[0])
 }
 
-// ensureArtifactsRoute adds the "artifacts" route on first use. It is the only
-// artifact command that changes Caddy's configuration.
+// ensureArtifactsRoute adds the "artifacts" route on first use, and the proxy to
+// `dev daemon` where a configuration was saved before it existed. It is the
+// only artifact command that changes Caddy's configuration.
 func ensureArtifactsRoute(c Config, site string, run runner) error {
 	check := func(routes []Route) (bool, error) {
 		for _, r := range routes {
@@ -253,11 +262,18 @@ func ensureArtifactsRoute(c Config, site string, run runner) error {
 		}
 		return false, nil
 	}
+	current := func(routes []Route) (bool, error) {
+		ok, err := check(routes)
+		if !ok || err != nil {
+			return false, err
+		}
+		return daemonRouted(c.statePath()), nil
+	}
 	routes, err := readRoutes(c.statePath())
 	if err != nil {
 		return err
 	}
-	if ok, err := check(routes); ok || err != nil {
+	if ok, err := current(routes); ok || err != nil {
 		return err
 	}
 	if err = os.MkdirAll(site, 0700); err != nil {
@@ -271,8 +287,11 @@ func ensureArtifactsRoute(c Config, site string, run runner) error {
 	if routes, err = readRoutes(c.statePath()); err != nil {
 		return err
 	}
-	if ok, err := check(routes); ok || err != nil {
+	if ok, err := current(routes); ok || err != nil {
 		return err
+	}
+	if exists, _ := check(routes); exists {
+		return apply(c, routes, false, run)
 	}
 	return apply(c, append(routes, Route{Name: artifactsRoute, Kind: "artifacts", Path: site}), false, run)
 }

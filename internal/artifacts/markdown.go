@@ -28,7 +28,8 @@ type headingIDs struct {
 }
 
 func newHeadingIDs(docs []parsedDocInput) *headingIDs {
-	h := &headingIDs{used: map[string]bool{"files": true}, byDoc: map[string]map[string]string{}} // "files": root gallery section
+	// Fixed ids of the page: the root gallery section, the theme button, and the viewer.
+	h := &headingIDs{used: map[string]bool{"files": true, "theme": true, "lightbox": true}, byDoc: map[string]map[string]string{}}
 	for _, d := range docs {
 		h.used[d.path] = true
 	}

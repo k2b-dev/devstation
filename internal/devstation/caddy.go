@@ -87,6 +87,9 @@ func render(c Config, routes []Route) ([]byte, error) {
 			handles = []handler{{Handler: "rewrite", URI: "/" + url.PathEscape(filepath.Base(r.Path))}, {Handler: "file_server", Root: filepath.Dir(r.Path)}}
 		case "artifacts":
 			handles = []handler{{Handler: "headers", Response: artifactHeaders()}, {Handler: "file_server", Root: r.Path}}
+			// /_devstation/ goes to `dev daemon`. The route has no @id, so
+			// versions before the daemon skip it and still work after a rollback.
+			s.Routes = append(s.Routes, caddyRoute{Match: []map[string][]string{{"host": {r.Name + "." + c.Domain}, "path": {daemonPath}}}, Handle: []handler{{Handler: "reverse_proxy", Upstreams: []upstream{{Dial: "unix/" + daemonSocket(c.dir)}}}}, Terminal: true})
 		default:
 			return nil, fmt.Errorf("invalid route kind %q", r.Kind)
 		}
@@ -96,6 +99,30 @@ func render(c Config, routes []Route) ([]byte, error) {
 	d.Apps.HTTP.Servers = map[string]server{"devstation": s}
 	d.Apps.TLS = map[string]any{"certificates": map[string]any{"load_files": []map[string]string{{"certificate": c.Certificate, "key": c.Key}}}}
 	return json.MarshalIndent(d, "", "  ")
+}
+
+const daemonPath = "/_devstation/*"
+
+// daemonSocket is where `dev daemon` listens, next to the Caddy admin socket.
+func daemonSocket(stateDir string) string { return filepath.Join(stateDir, "daemon.sock") }
+
+// daemonRouted reports whether the saved configuration sends /_devstation/ to
+// `dev daemon`; configurations saved before the daemon existed do not.
+func daemonRouted(path string) bool {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	var d document
+	if json.Unmarshal(data, &d) != nil {
+		return false
+	}
+	for _, r := range d.Apps.HTTP.Servers["devstation"].Routes {
+		if r.ID == "" && len(r.Match) == 1 && len(r.Match[0]["path"]) == 1 && r.Match[0]["path"][0] == daemonPath {
+			return true
+		}
+	}
+	return false
 }
 
 func readRoutes(path string) ([]Route, error) {
@@ -138,8 +165,8 @@ func readRoutes(path string) ([]Route, error) {
 			}
 			entry.Port = port
 		case len(r.Handle) == 2 && r.Handle[0].Handler == "headers" && r.Handle[1].Handler == "file_server":
-			// Recognized by shape: the next apply writes the current header set,
-			// so routes saved by older versions keep working after an update.
+			// Recognized by shape: the next apply writes the current header
+			// set, so routes saved by older versions keep working.
 			h := r.Handle[0]
 			if h.Response == nil || len(h.Response.Set) == 0 || h.Root != "" || h.URI != "" || h.Upstreams != nil || h.StatusCode != 0 {
 				return nil, fmt.Errorf("invalid saved route %q", name)

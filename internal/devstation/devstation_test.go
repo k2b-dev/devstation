@@ -1,13 +1,23 @@
 package devstation
 
 import (
+	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/k2b-dev/devstation/internal/artifacts"
 )
 
 func testConfig(t *testing.T) Config {
@@ -225,13 +235,33 @@ func TestArtifactCommands(t *testing.T) {
 	if err := json.Unmarshal([]byte(run("artifacts", "cloud", "--json")), &list); err != nil || len(list) != 1 {
 		t.Fatalf("%v %v", list, err)
 	}
-	if out := run("keep", "--json", "--", "cloud/board"); !strings.Contains(out, `"keep":true`) {
+	store := artifacts.Store{Root: filepath.Join(c.dir, "data", "devstation", "artifacts")}
+	if _, err := store.AddComment("cloud", "board", "a-dark-1440.png", 1, nil, nil, "check"); err != nil {
+		t.Fatal(err)
+	}
+	if out := run("keep", "--json", "--", "cloud/board"); !strings.Contains(out, `"keep":true`) || !strings.Contains(out, `"open_comments":1`) {
 		t.Fatal(out)
 	}
 	// Once the route exists it decides the store, whatever XDG_DATA_HOME says.
 	t.Setenv("XDG_DATA_HOME", filepath.Join(c.dir, "other"))
 	if out := run("artifacts"); !strings.Contains(out, "cloud/board") {
 		t.Fatalf("store not taken from the route: %q", out)
+	}
+	// So does the daemon, without a restart.
+	loaded, err := LoadConfig(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest("POST", "https://artifacts.dev.example.com:8443/_devstation/comments/cloud/board", strings.NewReader(`{"path":"a-dark-1440.png","version":1,"text":"via daemon"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Origin", "https://artifacts.dev.example.com:8443")
+	w := httptest.NewRecorder()
+	daemonHandler(loaded).ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("comment through the daemon: %d %s", w.Code, w.Body)
+	}
+	if out := run("comments", "cloud/board", "--json"); !strings.Contains(out, "via daemon") || !strings.Contains(out, `"open_comments":2`) {
+		t.Fatalf("comments: %s", out)
 	}
 	if err := Run([]string{"--config", configPath, "serve", shots, "--name", "artifacts"}, "test", &bytes.Buffer{}); err == nil {
 		t.Fatal("serve replaced the artifacts route")
@@ -286,5 +316,94 @@ func TestReadCookie(t *testing.T) {
 	_ = os.WriteFile(open, []byte("x"), 0644)
 	if _, err := readCookie("s=@" + open); err != nil || !strings.Contains(warned.String(), "chmod 600") {
 		t.Fatalf("no permission warning: %v %q", err, warned.String())
+	}
+}
+
+func TestArtifactsRouteGetsDaemonProxy(t *testing.T) {
+	c := testConfig(t)
+	site := filepath.Join(c.dir, "artifacts", "site")
+	older := fmt.Sprintf(`{"admin":{"listen":"unix/%s","config":{"persist":false}},"apps":{"http":{"servers":{"devstation":{"listen":["127.0.0.1:8443"],"routes":[{"@id":"devstation-artifacts","match":[{"host":["artifacts.dev.example.com"]}],"handle":[{"handler":"headers","response":{"set":{"Cache-Control":["no-cache"]}}},{"handler":"file_server","root":%q}],"terminal":true},{"handle":[{"handler":"static_response","status_code":404}],"terminal":true}],"tls_connection_policies":[{}],"automatic_https":{"disable":true}}}},"tls":{}}}`, c.socket(), site)
+	if err := os.WriteFile(c.statePath(), []byte(older), 0600); err != nil {
+		t.Fatal(err)
+	}
+	reloads := 0
+	if err := ensureArtifactsRoute(c, site, func(args ...string) error {
+		if args[0] == "reload" {
+			reloads++
+		}
+		return nil
+	}); err != nil || reloads != 1 {
+		t.Fatalf("adding the proxy: %v, %d reloads", err, reloads)
+	}
+	data, _ := os.ReadFile(c.statePath())
+	if !strings.Contains(string(data), "unix/"+filepath.Join(c.dir, "daemon.sock")) || !strings.Contains(string(data), "/_devstation/*") {
+		t.Fatalf("daemon proxy missing: %s", data)
+	}
+	// The proxy has no @id: it is not a named route, and older versions skip it.
+	if routes, err := readRoutes(c.statePath()); err != nil || len(routes) != 1 || routes[0].Kind != "artifacts" || routes[0].Path != site {
+		t.Fatalf("routes: %+v %v", routes, err)
+	}
+	// Once the proxy exists, publish leaves Caddy alone, even when other
+	// settings changed since the last apply.
+	c.Listen = "127.0.0.1:9443"
+	if err := ensureArtifactsRoute(c, site, func(...string) error { t.Fatal("reloaded a current route"); return nil }); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestDaemonRoutesComments(t *testing.T) {
+	c := testConfig(t)
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	h := daemonHandler(c)
+	for path, want := range map[string]int{"/_devstation/comments/p/n": http.StatusMethodNotAllowed, "/_devstation/other": http.StatusNotFound, "/p/n": http.StatusNotFound} {
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, httptest.NewRequest("GET", path, nil))
+		if w.Code != want {
+			t.Errorf("%s: %d, want %d", path, w.Code, want)
+		}
+	}
+}
+
+func TestDaemonFinishesRequestsOnShutdown(t *testing.T) {
+	c := testConfig(t)
+	socket := daemonSocket(c.dir)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		done <- serveDaemon(ctx, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = io.ReadAll(r.Body)
+			w.WriteHeader(http.StatusCreated)
+		}), socket, io.Discard)
+	}()
+	var conn net.Conn
+	var err error
+	for i := 0; i < 100; i++ {
+		if conn, err = net.Dial("unix", socket); err == nil {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	fmt.Fprint(conn, "POST / HTTP/1.1\r\nHost: x\r\nContent-Length: 10\r\n\r\n12345")
+	time.Sleep(100 * time.Millisecond)
+	cancel()
+	select {
+	case err := <-done:
+		t.Fatalf("stopped before the request finished: %v", err)
+	case <-time.After(200 * time.Millisecond):
+	}
+	fmt.Fprint(conn, "67890")
+	resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
+	if err != nil || resp.StatusCode != http.StatusCreated {
+		t.Fatalf("request during shutdown: %v %v", resp, err)
+	}
+	if err = <-done; err != nil {
+		t.Fatal(err)
+	}
+	if _, err = os.Lstat(socket); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("socket left behind: %v", err)
 	}
 }

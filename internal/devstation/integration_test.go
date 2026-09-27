@@ -220,6 +220,45 @@ func TestCaddyIntegration(t *testing.T) {
 	if body, _ := get("/", 200); !strings.Contains(body, "./demo/") {
 		t.Fatal("root index misses the project")
 	}
+	// Comments reach `dev daemon` through Caddy on the same origin.
+	daemonCtx, stopDaemon := context.WithCancel(context.Background())
+	served := make(chan error, 1)
+	go func() {
+		served <- serveDaemon(daemonCtx, daemonHandler(c), daemonSocket(c.dir), io.Discard)
+	}()
+	defer func() { stopDaemon(); <-served }()
+	post := func(path, body, origin string) int {
+		t.Helper()
+		req, _ := http.NewRequest("POST", c.url("artifacts")+path, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Origin", origin)
+		for deadline := time.Now().Add(5 * time.Second); ; {
+			resp, e := client.Do(req)
+			if e != nil {
+				t.Fatal(e)
+			}
+			resp.Body.Close()
+			if resp.StatusCode != http.StatusBadGateway || time.Now().After(deadline) {
+				return resp.StatusCode
+			}
+			time.Sleep(50 * time.Millisecond) // the daemon is still starting
+			req, _ = http.NewRequest("POST", c.url("artifacts")+path, strings.NewReader(body))
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("Origin", origin)
+		}
+	}
+	if code := post("/_devstation/comments/demo/board", `{"path":"board-dark-1440.png","version":1,"x":0.5,"y":0.5,"text":"clipped"}`, c.url("artifacts")); code != http.StatusCreated {
+		t.Fatalf("comment through Caddy: %d", code)
+	}
+	if code := post("/_devstation/comments/demo/board", `{"path":"board-dark-1440.png","version":1,"text":"x"}`, "https://evil.example.com"); code != http.StatusForbidden {
+		t.Fatalf("foreign origin: %d", code)
+	}
+	if code := post("/_devstation/other", `{}`, c.url("artifacts")); code != http.StatusNotFound {
+		t.Fatalf("unknown daemon path: %d", code)
+	}
+	if body, _ := get("/demo/board/comments.jsonl", 200); !strings.Contains(body, "clipped") {
+		t.Fatalf("comment log: %q", body)
+	}
 	_ = os.WriteFile(filepath.Join(shots, "board-dark-1440.png"), append(image, '!'), 0600)
 	publish()
 	if page, _ = get("/demo/board/", 200); !strings.Contains(page, "v/2/board-dark-1440.png") {

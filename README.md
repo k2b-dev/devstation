@@ -91,6 +91,13 @@ dev shot login=https://app.dev.example.com/login --out shots \
 dev publish shots --project app --name login-states
 ```
 
+To give feedback, click an image in the viewer to pin a numbered comment to
+that spot, or just type a comment. Agents read it with
+`dev comments app/login-states`, and `--images DIR` writes copies of the
+images with the numbered pins drawn in. Comments need the small background
+service `dev daemon` ([user unit](examples/devstation-daemon.service)).
+Pages switch between light, dark, and the system setting without flicker.
+
 [Artifacts and screenshots in detail →](docs/operations.md#artifacts)
 
 ## Agent Skill

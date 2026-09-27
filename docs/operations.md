@@ -152,7 +152,9 @@ successful first publish, Devstation adds the route `artifacts`, which serves
 the store's `site/` directory through a fixed `file_server` with
 `Cache-Control: no-cache` and `X-Content-Type-Options: nosniff`. From then on
 the route decides which store all artifact commands use, whatever
-`XDG_DATA_HOME` says, and publishes only write files without reloading Caddy.
+`XDG_DATA_HOME` says, and publishes only write files without reloading Caddy
+(once after an update from v0.4 or older, a publish reloads it to add the
+`dev daemon` proxy).
 If adding the route fails, the artifact is already stored; fix the cause and
 publish again. `dev expose` and `dev serve` refuse to replace `artifacts`;
 `dev unexpose artifacts` removes the route, and the next publish adds it again
@@ -169,6 +171,7 @@ URLs, below `https://artifacts.dev.example.com`:
 | `/P/N/compare/J-K/` | Before/after of two consecutive versions |
 | `/P/N/#file.png` | One image of the latest version, opened in the viewer |
 | `/P/N/artifact.json` | Metadata and file list with SHA-256 per version |
+| `/P/N/comments.jsonl` | Comments, see [Comments](#comments) |
 
 Pages are generated from the files:
 
@@ -239,7 +242,58 @@ applications behind this Caddy. This matches the single-user trust model above:
 publish only what everyone who can reach the listener may see.
 
 `dev list --json` shows the `artifacts` route with kind `artifacts`. `dev artifacts
-[PROJECT] --json` lists artifacts with URLs, size, and expiry.
+[PROJECT] --json` lists artifacts with URLs, size, expiry, and open comments.
+
+## Comments
+
+In the image viewer, click the image to pin a spot, type a comment, and send it
+with the button or Ctrl/⌘+Enter. Comments without a pin are fine too. Each
+comment gets a number per image and version, shown in a circle on the image.
+Thumbnails show how many comments are open, and the viewer lists all comments
+of an image with their version; "done" marks one as resolved. Pages switch
+between light, dark, and the system setting with the button at the top right;
+the choice is stored in the browser and applied before the page is drawn.
+
+Agents read and resolve comments from the command line:
+
+```sh
+dev comments app/login-states            # open comments with image, version, pin, link
+dev comments app/login-states --all --json
+dev comments app/login-states --images /tmp/pins   # copies with numbered pins drawn in
+dev comments resolve app/login-states 3fa2c1d9e0 7b41c0e2aa
+```
+
+`--images` writes PNG copies of images that have pinned comments (PNG, JPEG,
+and GIF sources up to 50 megapixels) to `DIR/vVERSION/PATH`, with `.png`
+appended for other formats. Open comments are red, resolved ones gray.
+
+Pages post comments to `/_devstation/comments/PROJECT/NAME` on the artifacts
+host. The `artifacts` route sends `/_devstation/` to `dev daemon`, the one
+background process of Devstation, which listens on the Unix socket
+`daemon.sock` next to Caddy's admin socket; everything else stays static. A
+publish updates an older `artifacts` route to this shape. Run the daemon as the
+same user as Caddy, for example with the
+[user unit](../examples/devstation-daemon.service); like every artifact command,
+it takes the store from the route on each request:
+
+```sh
+cp examples/devstation-daemon.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now devstation-daemon
+```
+
+Pages published before v0.5 get the comment panel and the theme button with
+the artifact's next publish; their older version pages stay as they were.
+Without the daemon, pages still show existing comments and report that new
+ones cannot be sent. The daemon accepts only JSON requests whose `Origin`
+matches the host, so other sites cannot post through a visitor's browser.
+There is no login: everyone who can reach the listener can comment, as they
+can read. Comments are plain text of up to 4000 characters without control
+characters (line breaks and tabs are fine) and are shown as text, never as
+HTML. They are stored as `comments.jsonl` in the artifact's directory,
+readable at `/PROJECT/NAME/comments.jsonl`, and removed with the artifact. One
+artifact takes new comments until it holds 1 MiB of them; marking comments
+done keeps working beyond that.
 
 ## Screenshots
 
@@ -310,10 +364,12 @@ dev update v0.1.0     # pin or roll back
 Updates verify SHA-256 and atomically replace the executable at its resolved
 installation path. The directory must be writable by your user. Concurrent updates
 are rejected. Configuration, routes, Caddy, and the agent skill are unchanged.
+A running daemon keeps the old version until you restart it
+(`systemctl --user restart devstation-daemon`).
 Development builds can also use the updater after the first release exists.
 Do not run the installer and updater concurrently.
 
-To remove Devstation, stop/disable its Caddy service and remove the `dev` binary,
+To remove Devstation, stop/disable its Caddy and daemon services and remove the `dev` binary,
 its adjacent `dev.update.lock` file, its configuration directory, and the
 artifact store (the parent of the `site` path that `dev list` shows for
 `artifacts`). Remove only your Devstation DNS/certificate configuration as

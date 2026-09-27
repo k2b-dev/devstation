@@ -19,6 +19,7 @@ var templateFS embed.FS
 var pages = template.Must(template.New("").Funcs(template.FuncMap{
 	"css":      func() template.CSS { return template.CSS(mustRead("templates/style.css")) },
 	"lightbox": func() template.JS { return template.JS(mustRead("templates/lightbox.js")) },
+	"theme":    func() template.JS { return template.JS(mustRead("templates/theme.js")) },
 }).ParseFS(templateFS, "templates/pages.html"))
 
 func mustRead(name string) string {
@@ -87,6 +88,7 @@ type versionPage struct {
 	MultiDoc                      bool
 	Sections                      []sectionView
 	HasMedia                      bool
+	CommentsHref, CommentsAPI     string
 }
 
 func heading(m Meta) string {
@@ -158,6 +160,7 @@ func renderVersion(m Meta, k int, current bool, ds docSet) ([]byte, error) {
 		Crumbs:  []crumb{{"artifacts", up + "../../"}, {m.Project, up + "../"}, {m.Name, ""}},
 		Version: k, At: v.At, IsCurrent: current,
 		LatestHref: up, Link: m.Link, Docs: docs, MultiDoc: len(docs) > 1,
+		CommentsHref: up + "comments.jsonl", CommentsAPI: CommentsPrefix + m.Project + "/" + m.Name,
 	}
 	if !current {
 		p.Crumbs[2].Href = up
