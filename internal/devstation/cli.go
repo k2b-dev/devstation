@@ -23,7 +23,7 @@ const help = `devstation — local services behind HTTPS
   dev artifacts [PROJECT] [--json]
   dev keep PROJECT/NAME [--json]
   dev unpublish PROJECT/NAME... | --expired [--json]
-  dev shot [LABEL=]URL... --out DIR [--themes light,dark] [--widths 1440,390]
+  dev shot [LABEL=]URL... --out DIR [--themes light] [--widths 1440,390]
            [--cookie NAME=@FILE]... [--theme-cookie NAME] [--eval JS]
            [--click SEL]... [--hover SEL] [--wait-for SEL] [--full-page]
            [--height PX] [--scale N] [--browser PATH] [--timeout 90s] [--json]

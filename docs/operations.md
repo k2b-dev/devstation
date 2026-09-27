@@ -318,8 +318,8 @@ options apply to every URL of one command.
   your user's rights, so capture only pages you trust.
 - **Isolation:** every screenshot starts in a fresh browser context, so
   storage, cookies, and cache never carry over between themes, widths, or URLs.
-- **Themes and sizes:** `--themes light,dark` (also `hell` and `dunkel`) sets
-  `prefers-color-scheme`. `--theme-cookie NAME` also sets the cookie `NAME` to
+- **Themes and sizes:** `--themes` (default `light`; `light,dark` for both,
+  also `hell` and `dunkel`) sets `prefers-color-scheme`. `--theme-cookie NAME` also sets the cookie `NAME` to
   `light` or `dark` for applications that read the theme from a cookie; when
   light and dark come out identical, a warning suggests it. `--widths
   1440,390` sets the viewport width; the height is 900 px, or 844 px below

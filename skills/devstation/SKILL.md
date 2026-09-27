@@ -52,7 +52,10 @@ dev shot board-dialog=https://app.dev.example.com/board --click "#new-task" \
 - One state per label (`<motif>-<state>=URL`). Options apply to every URL of a
   command, so run one command per interaction. Use `--click`, `--hover`, and
   `--wait-for` for dialogs, menus, and tooltips; `--full-page` for long pages.
-  The defaults are `--themes light,dark --widths 1440,390`.
+  The defaults are `--themes light --widths 1440,390`.
+- Take light mode only. Add dark (`--themes light,dark`) only when the task is
+  about how something looks in dark mode or the user asks for it: every theme
+  doubles what the user has to look through.
 - Sign in with a cookie file that holds only the session value (mode 600,
   outside the output folder). Get the session the way the application's own
   docs describe, and never print or publish the value.

@@ -22,14 +22,14 @@ type stringList []string
 func (l *stringList) String() string     { return strings.Join(*l, ",") }
 func (l *stringList) Set(v string) error { *l = append(*l, v); return nil }
 
-const shotUsage = "usage: dev shot [LABEL=]URL... --out DIR [--themes light,dark] [--widths 1440,390] [--cookie NAME=@FILE]... [--theme-cookie NAME] [--eval JS] [--click SELECTOR]... [--hover SELECTOR] [--wait-for SELECTOR] [--full-page] [--height PX] [--scale N] [--browser PATH] [--timeout DURATION] [--json]"
+const shotUsage = "usage: dev shot [LABEL=]URL... --out DIR [--themes light] [--widths 1440,390] [--cookie NAME=@FILE]... [--theme-cookie NAME] [--eval JS] [--click SELECTOR]... [--hover SELECTOR] [--wait-for SELECTOR] [--full-page] [--height PX] [--scale N] [--browser PATH] [--timeout DURATION] [--json]"
 
 func runShot(configPath string, args []string, out io.Writer) error {
 	flags := flag.NewFlagSet("shot", flag.ContinueOnError)
 	flags.SetOutput(out)
 	var o shot.Options
 	var cookies, clicks stringList
-	themes := flags.String("themes", "light,dark", "color schemes: light, dark, hell, dunkel")
+	themes := flags.String("themes", "light", "color schemes, comma-separated: light, dark, hell, dunkel")
 	widths := flags.String("widths", "1440,390", "viewport widths in CSS pixels")
 	flags.StringVar(&o.Out, "out", "", "directory for the PNG files (required)")
 	flags.IntVar(&o.Height, "height", 0, "viewport height (default 900, or 844 below 600 px width)")
