@@ -27,6 +27,9 @@ const help = `devstation — local services behind HTTPS
            [--cookie NAME=@FILE]... [--theme-cookie NAME] [--eval JS]
            [--click SEL]... [--hover SEL] [--wait-for SEL] [--full-page]
            [--height PX] [--scale N] [--browser PATH] [--timeout 90s] [--json]
+  dev comments PROJECT/NAME [--all] [--images DIR] [--json]
+  dev comments resolve PROJECT/NAME ID... [--reopen]
+  dev daemon
   dev version
   dev update [VERSION]
 
@@ -86,6 +89,15 @@ func Run(args []string, version string, out io.Writer) error {
 		return release.Update(target, out)
 	case "shot":
 		return runShot(*config, args[1:], out)
+	case "comments", "daemon":
+		c, err := LoadConfig(*config)
+		if err != nil {
+			return err
+		}
+		if args[0] == "daemon" {
+			return runDaemon(c, args[1:], out)
+		}
+		return runComments(c, args[1:], out)
 	case "publish", "artifacts", "keep", "unpublish":
 		c, err := LoadConfig(*config)
 		if err != nil {

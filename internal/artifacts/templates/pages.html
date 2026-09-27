@@ -7,11 +7,13 @@
 <meta name="robots" content="noindex">
 <meta name="referrer" content="no-referrer">
 <title>{{.Title}}</title>
+<script>try{var t=localStorage.getItem("devstation-theme");if(t==="light"||t==="dark")document.documentElement.classList.add(t)}catch(e){}</script>
 <style>{{css}}</style>
 </head>
 <body>
 <header>
 <nav>{{range $i, $c := .Crumbs}}{{if $i}}<span class="sep">/</span>{{end}}{{if $c.Href}}<a href="{{$c.Href}}">{{$c.Label}}</a>{{else}}<span>{{$c.Label}}</span>{{end}}{{end}}</nav>
+<button type="button" id="theme" class="theme">◐ Auto</button>
 </header>
 <main>
 {{end}}
@@ -19,6 +21,7 @@
 {{define "foot"}}
 </main>
 <script>document.querySelectorAll("time[datetime]").forEach(function(t){t.textContent=new Date(t.dateTime).toLocaleString(undefined,{dateStyle:"medium",timeStyle:"short"})})</script>
+<script>{{theme}}</script>
 </body>
 </html>
 {{end}}
@@ -35,6 +38,7 @@
 <span>v{{.Version}}{{if .IsCurrent}} · latest{{else}} · <a href="{{.LatestHref}}">latest version</a>{{end}}</span>
 <span>{{template "time" .At}}</span>
 {{if .Link}}<span><a href="{{.Link}}" rel="noreferrer">{{.Link}}</a></span>{{end}}
+<span class="open-comments" hidden></span>
 </p>
 {{if gt (len .Versions) 1}}<p class="versions">versions {{range .Versions}}{{if .Current}}<strong>v{{.N}}</strong>{{else}}<a href="{{.Href}}">v{{.N}}</a>{{end}} {{end}}{{if .CompareHref}}· <a href="{{.CompareHref}}">compare v{{.Prev}} → v{{.Version}}</a>{{end}}</p>{{end}}
 </section>
@@ -54,9 +58,19 @@
 </section>
 {{end}}
 {{if and (not .Docs) (not .Sections)}}<p class="muted">This version has no files to show.</p>{{end}}
-{{if .HasMedia}}<dialog id="lightbox" class="lightbox" aria-label="Image viewer">
+{{if .HasMedia}}<dialog id="lightbox" class="lightbox" aria-label="Image viewer" data-comments="{{.CommentsHref}}" data-api="{{.CommentsAPI}}" data-version="{{.Version}}">
 <div class="lb-bar"><span class="lb-count"></span><span class="lb-name"></span><span class="lb-meta"></span><a class="lb-original" target="_blank" rel="noopener">original</a><button type="button" class="lb-close" aria-label="Close (Esc)">✕</button></div>
-<div class="lb-media"></div>
+<div class="lb-main">
+<div class="lb-media"><div class="lb-stage"></div></div>
+<aside class="lb-comments" aria-label="Comments">
+<ol class="lb-list"></ol>
+<form class="lb-form">
+<textarea rows="3" maxlength="4000" placeholder="Comment on this image. Click the image first to pin a spot."></textarea>
+<div class="lb-actions"><span class="lb-pin-note"></span><button type="submit">Comment</button></div>
+<p class="lb-error" role="status"></p>
+</form>
+</aside>
+</div>
 <button type="button" class="lb-nav lb-prev" aria-label="Previous (←)">‹</button>
 <button type="button" class="lb-nav lb-next" aria-label="Next (→)">›</button>
 </dialog>

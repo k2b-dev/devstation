@@ -4,10 +4,15 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/k2b-dev/devstation/internal/artifacts"
 )
 
 func testConfig(t *testing.T) Config {
@@ -286,5 +291,51 @@ func TestReadCookie(t *testing.T) {
 	_ = os.WriteFile(open, []byte("x"), 0644)
 	if _, err := readCookie("s=@" + open); err != nil || !strings.Contains(warned.String(), "chmod 600") {
 		t.Fatalf("no permission warning: %v %q", err, warned.String())
+	}
+}
+
+func TestArtifactsRouteUpgradesOlderShape(t *testing.T) {
+	c := testConfig(t)
+	site := filepath.Join(c.dir, "artifacts", "site")
+	older := fmt.Sprintf(`{"admin":{"listen":"unix/%s","config":{"persist":false}},"apps":{"http":{"servers":{"devstation":{"listen":["127.0.0.1:8443"],"routes":[{"@id":"devstation-artifacts","match":[{"host":["artifacts.dev.example.com"]}],"handle":[{"handler":"headers","response":{"set":{"Cache-Control":["no-cache"]}}},{"handler":"file_server","root":%q}],"terminal":true},{"handle":[{"handler":"static_response","status_code":404}],"terminal":true}],"tls_connection_policies":[{}],"automatic_https":{"disable":true}}}},"tls":{}}}`, c.socket(), site)
+	if err := os.WriteFile(c.statePath(), []byte(older), 0600); err != nil {
+		t.Fatal(err)
+	}
+	routes, err := readRoutes(c.statePath())
+	if err != nil || len(routes) != 1 || routes[0].Kind != "artifacts" || routes[0].Path != site {
+		t.Fatalf("older route not read: %+v %v", routes, err)
+	}
+	reloads := 0
+	if err = ensureArtifactsRoute(c, site, func(args ...string) error {
+		if args[0] == "reload" {
+			reloads++
+		}
+		return nil
+	}); err != nil || reloads != 1 {
+		t.Fatalf("upgrade: %v, %d reloads", err, reloads)
+	}
+	data, _ := os.ReadFile(c.statePath())
+	if !strings.Contains(string(data), "unix/"+filepath.Join(c.dir, "daemon.sock")) || !strings.Contains(string(data), "/_devstation/*") {
+		t.Fatalf("daemon proxy missing: %s", data)
+	}
+	if err = ensureArtifactsRoute(c, site, func(...string) error { t.Fatal("reloaded a current route"); return nil }); err != nil {
+		t.Fatal(err)
+	}
+	// A subroute that proxies somewhere else is not an artifacts route.
+	tampered := strings.Replace(string(data), "daemon.sock", "other.sock", 1)
+	_ = os.WriteFile(c.statePath(), []byte(tampered), 0600)
+	if _, err = readRoutes(c.statePath()); err == nil {
+		t.Fatal("accepted a proxy to another socket")
+	}
+}
+
+func TestDaemonRoutesComments(t *testing.T) {
+	h := daemonHandler(artifacts.Store{Root: t.TempDir()})
+	for path, want := range map[string]int{"/_devstation/comments/p/n": http.StatusMethodNotAllowed, "/_devstation/other": http.StatusNotFound, "/p/n": http.StatusNotFound} {
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, httptest.NewRequest("GET", path, nil))
+		if w.Code != want {
+			t.Errorf("%s: %d, want %d", path, w.Code, want)
+		}
 	}
 }

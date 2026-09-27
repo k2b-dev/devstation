@@ -97,6 +97,21 @@ Caddy here, not the user's DNS.
 - A folder with `index.html` or a single `.html` file is served unchanged, so
   mockups keep their scripts. Use relative asset paths.
 
+## Read feedback
+
+People comment on images in the artifact viewer, often pinned to a spot. When
+asked to look at feedback or comments:
+
+```sh
+dev comments app/login-states --images "$tmp/pins"
+```
+
+- Each comment names the image, version, pin number, and position. Open the
+  pinned copies in `$tmp/pins` to see exactly where each number sits.
+- Address the feedback, publish a new version under the same name, then mark
+  the comments you handled: `dev comments resolve app/login-states ID...`.
+  Leave comments you did not address open and say why.
+
 ## Configuration
 
 Configuration defaults to `~/.config/devstation/config.toml` (or
@@ -106,7 +121,7 @@ and Caddy startup belong to the host setup, not individual previews.
 
 Use only `dev expose`, `dev serve`, `dev list`, `dev unexpose`, `dev shot`, and
 the artifact commands (`dev publish`, `dev artifacts`, `dev keep`,
-`dev unpublish`) for routine preview work.
+`dev unpublish`, `dev comments`) for routine preview work.
 Do not edit generated `state/caddy.json`, operate unrelated Caddy instances, or
 run commands with sudo. `--no-reload` is for initial provisioning only: it writes
 validated configuration but does not make a URL live. A failed update that reports

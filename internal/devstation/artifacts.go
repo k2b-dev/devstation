@@ -1,6 +1,7 @@
 package devstation
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -37,6 +38,7 @@ type artifactJSON struct {
 	Keep       bool       `json:"keep"`
 	Updated    time.Time  `json:"updated"`
 	Expires    *time.Time `json:"expires"`
+	Comments   int        `json:"open_comments"`
 }
 
 func describe(base string, m artifacts.Meta) artifactJSON {
@@ -137,12 +139,13 @@ func runArtifacts(c Config, args []string, out io.Writer) error {
 		if err != nil {
 			return err
 		}
-		if !routed {
-			// The files are in place before the route appears; a rejected
-			// publish never reloads Caddy.
-			if err = ensureArtifactsRoute(c, store.Site(), runCaddy); err != nil {
+		// The files are in place before the route appears or is updated, so a
+		// rejected publish never reloads Caddy.
+		if err = ensureArtifactsRoute(c, store.Site(), runCaddy); err != nil {
+			if !routed {
 				return fmt.Errorf("published %s/%s, but it is not served yet: the %q route could not be added (%w); fix the cause and publish again", o.Project, o.Name, artifactsRoute, err)
 			}
+			fmt.Fprintf(stderr, "warning: published, but updating the %q route failed: %v\n", artifactsRoute, err)
 		}
 		for _, s := range r.Skipped {
 			fmt.Fprintln(stderr, "skipped (hidden or not a regular file):", s)
@@ -183,7 +186,11 @@ func runArtifacts(c Config, args []string, out io.Writer) error {
 		}
 		list := []artifactJSON{}
 		for _, m := range metas {
-			list = append(list, describe(base, m))
+			d := describe(base, m)
+			if cs, err := store.Comments(m.Project, m.Name); err == nil {
+				d.Comments = artifacts.OpenComments(cs)
+			}
+			list = append(list, d)
 		}
 		if *asJSON {
 			return json.NewEncoder(out).Encode(list)
@@ -192,6 +199,9 @@ func runArtifacts(c Config, args []string, out io.Writer) error {
 			life := "kept"
 			if a.Expires != nil {
 				life = "expires " + a.Expires.Format("2006-01-02")
+			}
+			if a.Comments > 0 {
+				life += fmt.Sprintf("\t%d open comments", a.Comments)
 			}
 			fmt.Fprintf(out, "%s/%s\tv%d\t%s\t%s\t%s\n", a.Project, a.Name, a.Version, a.Summary, life, a.URL)
 		}
@@ -253,11 +263,25 @@ func ensureArtifactsRoute(c Config, site string, run runner) error {
 		}
 		return false, nil
 	}
+	// current reports whether the route exists in the shape this version
+	// writes; a route saved by an older version is rewritten once.
+	current := func(routes []Route) (bool, error) {
+		ok, err := check(routes)
+		if !ok || err != nil {
+			return false, err
+		}
+		want, err := render(c, routes)
+		if err != nil {
+			return false, err
+		}
+		have, err := os.ReadFile(c.statePath())
+		return err == nil && bytes.Equal(want, have), nil
+	}
 	routes, err := readRoutes(c.statePath())
 	if err != nil {
 		return err
 	}
-	if ok, err := check(routes); ok || err != nil {
+	if ok, err := current(routes); ok || err != nil {
 		return err
 	}
 	if err = os.MkdirAll(site, 0700); err != nil {
@@ -271,8 +295,11 @@ func ensureArtifactsRoute(c Config, site string, run runner) error {
 	if routes, err = readRoutes(c.statePath()); err != nil {
 		return err
 	}
-	if ok, err := check(routes); ok || err != nil {
+	if ok, err := current(routes); ok || err != nil {
 		return err
+	}
+	if exists, _ := check(routes); exists {
+		return apply(c, routes, false, run)
 	}
 	return apply(c, append(routes, Route{Name: artifactsRoute, Kind: "artifacts", Path: site}), false, run)
 }

@@ -1,0 +1,13 @@
+# User service: ~/.config/systemd/user/devstation-daemon.service
+[Unit]
+Description=Devstation daemon
+
+[Service]
+ExecStart=%h/.local/bin/dev daemon
+Restart=on-failure
+RestartSec=3
+UMask=0077
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target

@@ -30,12 +30,13 @@ type caddyRoute struct {
 	Terminal bool                  `json:"terminal"`
 }
 type handler struct {
-	Handler    string     `json:"handler"`
-	Upstreams  []upstream `json:"upstreams,omitempty"`
-	StatusCode int        `json:"status_code,omitempty"`
-	Root       string     `json:"root,omitempty"`
-	URI        string     `json:"uri,omitempty"`
-	Response   *headerOps `json:"response,omitempty"`
+	Handler    string       `json:"handler"`
+	Upstreams  []upstream   `json:"upstreams,omitempty"`
+	StatusCode int          `json:"status_code,omitempty"`
+	Root       string       `json:"root,omitempty"`
+	URI        string       `json:"uri,omitempty"`
+	Response   *headerOps   `json:"response,omitempty"`
+	Routes     []caddyRoute `json:"routes,omitempty"`
 }
 type headerOps struct {
 	Set map[string][]string `json:"set"`
@@ -86,7 +87,11 @@ func render(c Config, routes []Route) ([]byte, error) {
 		case "file":
 			handles = []handler{{Handler: "rewrite", URI: "/" + url.PathEscape(filepath.Base(r.Path))}, {Handler: "file_server", Root: filepath.Dir(r.Path)}}
 		case "artifacts":
-			handles = []handler{{Handler: "headers", Response: artifactHeaders()}, {Handler: "file_server", Root: r.Path}}
+			// /_devstation/ goes to `dev daemon`; everything else is files.
+			handles = []handler{{Handler: "headers", Response: artifactHeaders()}, {Handler: "subroute", Routes: []caddyRoute{
+				{Match: []map[string][]string{{"path": {daemonPath}}}, Handle: []handler{{Handler: "reverse_proxy", Upstreams: []upstream{{Dial: "unix/" + daemonSocket(c.dir)}}}}, Terminal: true},
+				{Handle: []handler{{Handler: "file_server", Root: r.Path}}},
+			}}}
 		default:
 			return nil, fmt.Errorf("invalid route kind %q", r.Kind)
 		}
@@ -96,6 +101,33 @@ func render(c Config, routes []Route) ([]byte, error) {
 	d.Apps.HTTP.Servers = map[string]server{"devstation": s}
 	d.Apps.TLS = map[string]any{"certificates": map[string]any{"load_files": []map[string]string{{"certificate": c.Certificate, "key": c.Key}}}}
 	return json.MarshalIndent(d, "", "  ")
+}
+
+const daemonPath = "/_devstation/*"
+
+// daemonSocket is where `dev daemon` listens, next to the Caddy admin socket.
+func daemonSocket(stateDir string) string { return filepath.Join(stateDir, "daemon.sock") }
+
+// artifactsRoot accepts the file_server of v0.3.0 routes and the current
+// subroute with the daemon proxy, and returns the served directory.
+func artifactsRoot(h handler, stateDir string) (string, bool) {
+	if h.Handler == "file_server" {
+		return h.Root, len(h.Routes) == 0 && h.Upstreams == nil
+	}
+	if len(h.Routes) != 2 {
+		return "", false
+	}
+	api, files := h.Routes[0], h.Routes[1]
+	if len(files.Match) != 0 || len(files.Handle) != 1 || files.Handle[0].Handler != "file_server" {
+		return "", false
+	}
+	root := files.Handle[0].Root
+	if len(api.Match) != 1 || len(api.Match[0]) != 1 || len(api.Match[0]["path"]) != 1 || api.Match[0]["path"][0] != daemonPath ||
+		len(api.Handle) != 1 || api.Handle[0].Handler != "reverse_proxy" || len(api.Handle[0].Upstreams) != 1 ||
+		api.Handle[0].Upstreams[0].Dial != "unix/"+daemonSocket(stateDir) {
+		return "", false
+	}
+	return root, true
 }
 
 func readRoutes(path string) ([]Route, error) {
@@ -137,15 +169,19 @@ func readRoutes(path string) ([]Route, error) {
 				return nil, fmt.Errorf("invalid saved upstream")
 			}
 			entry.Port = port
-		case len(r.Handle) == 2 && r.Handle[0].Handler == "headers" && r.Handle[1].Handler == "file_server":
-			// Recognized by shape: the next apply writes the current header set,
-			// so routes saved by older versions keep working after an update.
+		case len(r.Handle) == 2 && r.Handle[0].Handler == "headers" && (r.Handle[1].Handler == "file_server" || r.Handle[1].Handler == "subroute"):
+			// Recognized by shape: the next apply writes the current shape and
+			// header set, so routes saved by older versions keep working.
 			h := r.Handle[0]
-			if h.Response == nil || len(h.Response.Set) == 0 || h.Root != "" || h.URI != "" || h.Upstreams != nil || h.StatusCode != 0 {
+			if h.Response == nil || len(h.Response.Set) == 0 || h.Root != "" || h.URI != "" || h.Upstreams != nil || h.StatusCode != 0 || h.Routes != nil {
+				return nil, fmt.Errorf("invalid saved route %q", name)
+			}
+			root, ok := artifactsRoot(r.Handle[1], filepath.Dir(path))
+			if !ok {
 				return nil, fmt.Errorf("invalid saved route %q", name)
 			}
 			entry.Kind = "artifacts"
-			entry.Path = r.Handle[1].Root
+			entry.Path = root
 		case len(r.Handle) == 1 && r.Handle[0].Handler == "file_server":
 			entry.Kind = "directory"
 			entry.Path = r.Handle[0].Root

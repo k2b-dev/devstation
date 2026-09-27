@@ -13,9 +13,12 @@ and application process management are external prerequisites.
 - Accept only DNS labels and loopback ports. Do not add shell execution, root
   helpers, arbitrary Caddy snippets, or access to unrelated Caddy instances.
 - Artifacts copy only explicitly passed paths and render all HTML at publish
-  time with html/template (goldmark in safe mode for Markdown). Caddy only
-  serves files: no daemons, uploads, or request-time rendering. The artifact
-  store has its own lock; only route creation takes the routing lock.
+  time with html/template (goldmark in safe mode for Markdown). Caddy serves
+  the files. The only long-running process is `dev daemon` behind
+  `/_devstation/` on the artifacts route: same-origin JSON only, comments are
+  text, and they live and die with their artifact. No uploads or request-time
+  rendering. The artifact store has its own lock; only route changes take the
+  routing lock.
 - Screenshots drive a local headless Chromium over `--remote-debugging-pipe`
   with a small built-in DevTools client: no browser library, no shell, no
   listening port. Cookie values come only from files, never from arguments.

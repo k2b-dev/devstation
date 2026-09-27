@@ -59,8 +59,8 @@ func LoadConfig(path string) (Config, error) {
 	}
 	c.dir = filepath.Join(filepath.Dir(path), "state")
 	// Unix-domain socket paths are limited to roughly 100 bytes across platforms.
-	if len(c.socket()) > 100 {
-		return c, fmt.Errorf("configuration path is too long for the Caddy admin socket")
+	if len(daemonSocket(c.dir)) > 100 {
+		return c, fmt.Errorf("configuration path is too long for the Unix sockets in its state directory")
 	}
 	return c, nil
 }
