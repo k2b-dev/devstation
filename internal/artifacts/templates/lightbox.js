@@ -183,6 +183,55 @@
   }
   function showError(err) { status.textContent = err.message; }
 
+  // Zoom: null fits the image into the viewer, a number scales its natural
+  // size. Pins sit in percent of the image, so they follow.
+  var zoom = null, fitted = 1, scroller = q(".lb-media"), zoomBar = q(".lb-zoom"), zoomLevel = q(".lb-zoom-level");
+  var STEPS = [0.5, 0.75, 1, 1.5, 2, 3, 4];
+  function image() {
+    var m = stage.firstElementChild;
+    return m && m.tagName === "IMG" && m.naturalWidth ? m : null;
+  }
+  // setZoom keeps the point under (cx, cy), or the middle of the view, in place.
+  function setZoom(z, cx, cy) {
+    var img = image();
+    if (!img) return;
+    var before = img.getBoundingClientRect(), view = scroller.getBoundingClientRect();
+    if (zoom === null) fitted = before.width / img.naturalWidth;
+    if (z !== null && z <= fitted * 1.01) z = null;
+    if (cx == null) { cx = view.left + view.width / 2; cy = view.top + view.height / 2; }
+    var fx = (cx - before.left) / before.width, fy = (cy - before.top) / before.height;
+    zoom = z;
+    stage.classList.toggle("zoomed", z !== null);
+    img.style.width = z === null ? "" : Math.round(img.naturalWidth * z) + "px";
+    zoomLevel.textContent = z === null ? "Fit" : Math.round(z * 100) + "%";
+    var after = img.getBoundingClientRect();
+    scroller.scrollLeft += after.left + fx * after.width - cx;
+    scroller.scrollTop += after.top + fy * after.height - cy;
+  }
+  function stepZoom(dir) {
+    var img = image();
+    if (!img) return;
+    var now = zoom === null ? img.getBoundingClientRect().width / img.naturalWidth : zoom;
+    var next = null;
+    STEPS.forEach(function (s) { // skip steps that would barely change the size
+      if (dir > 0 && s > now * 1.15 && next === null) next = s;
+      if (dir < 0 && s < now / 1.15) next = s;
+    });
+    if (next !== null) setZoom(next);
+    else if (dir < 0) setZoom(null);
+  }
+  q(".lb-zoom-in").addEventListener("click", function () { stepZoom(1); });
+  q(".lb-zoom-out").addEventListener("click", function () { stepZoom(-1); });
+  zoomLevel.addEventListener("click", function () { setZoom(zoom === null ? 1 : null); });
+  // Ctrl/⌘ + wheel, and pinching on a trackpad, zoom smoothly at the pointer.
+  scroller.addEventListener("wheel", function (e) {
+    var img = image();
+    if (!(e.ctrlKey || e.metaKey) || !img) return;
+    e.preventDefault();
+    var now = zoom === null ? img.getBoundingClientRect().width / img.naturalWidth : zoom;
+    setZoom(Math.min(4, now * Math.exp(-e.deltaY * 0.002)), e.clientX, e.clientY);
+  }, { passive: false });
+
   function show(n) {
     if (box.open) drafts[items[current].id] = { text: text.value, pending: pending };
     current = (n + items.length) % items.length;
@@ -200,7 +249,11 @@
       });
     }
     stage.replaceChildren(media);
-    q(".lb-media").scrollTop = 0;
+    zoom = null;
+    stage.classList.remove("zoomed");
+    zoomLevel.textContent = "Fit";
+    zoomBar.hidden = !!f.dataset.video;
+    scroller.scrollTop = 0;
     var draft = drafts[f.id] || {};
     text.value = draft.text || "";
     pending = draft.pending || null;
@@ -260,6 +313,11 @@
       if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); form.requestSubmit(); }
       return;
     }
+    if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+      if (e.key === "+" || e.key === "=") { stepZoom(1); e.preventDefault(); }
+      if (e.key === "-") { stepZoom(-1); e.preventDefault(); }
+      if (e.key === "0") { setZoom(null); e.preventDefault(); }
+    }
     if (e.key === "ArrowLeft") { show(current - 1); e.preventDefault(); }
     if (e.key === "ArrowRight") { show(current + 1); e.preventDefault(); }
   });
@@ -277,7 +335,7 @@
   var start = null;
   stage.addEventListener("touchstart", function (e) { start = e.touches.length === 1 ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : null; }, { passive: true });
   stage.addEventListener("touchend", function (e) {
-    if (start === null) return;
+    if (start === null || zoom !== null) return;
     var dx = e.changedTouches[0].clientX - start.x, dy = e.changedTouches[0].clientY - start.y;
     start = null;
     if (Math.abs(dx) > 60 && Math.abs(dx) > 2 * Math.abs(dy)) show(current + (dx < 0 ? 1 : -1));

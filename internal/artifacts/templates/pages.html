@@ -59,7 +59,7 @@
 {{end}}
 {{if and (not .Docs) (not .Sections)}}<p class="muted">This version has no files to show.</p>{{end}}
 {{if .HasMedia}}<dialog id="lightbox" class="lightbox" aria-label="Image viewer" data-comments="{{.CommentsHref}}" data-api="{{.CommentsAPI}}" data-version="{{.Version}}">
-<div class="lb-bar"><span class="lb-count"></span><span class="lb-name"></span><span class="lb-meta"></span><a class="lb-original" target="_blank" rel="noopener">original</a><button type="button" class="lb-close" aria-label="Close (Esc)">✕</button></div>
+<div class="lb-bar"><span class="lb-count"></span><span class="lb-name"></span><span class="lb-meta"></span><span class="lb-zoom"><button type="button" class="lb-zoom-out" aria-label="Zoom out (−)">−</button><button type="button" class="lb-zoom-level" aria-label="Switch between fit and 100% (0)">Fit</button><button type="button" class="lb-zoom-in" aria-label="Zoom in (+)">+</button></span><a class="lb-original" target="_blank" rel="noopener">original</a><button type="button" class="lb-close" aria-label="Close (Esc)">✕</button></div>
 <div class="lb-main">
 <div class="lb-media"><div class="lb-stage"></div></div>
 <aside class="lb-comments" aria-label="Comments">
