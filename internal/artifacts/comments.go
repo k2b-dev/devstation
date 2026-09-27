@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -99,6 +100,11 @@ func (s Store) AddComment(p, n, path string, version int, x, y *float64, text st
 	if text == "" || utf8.RuneCountInString(text) > maxCommentRunes {
 		return Comment{}, fmt.Errorf("a comment needs 1 to %d characters", maxCommentRunes)
 	}
+	// Agents read comments in a terminal, where control characters would
+	// act as escape sequences.
+	if strings.ContainsFunc(text, func(r rune) bool { return unicode.IsControl(r) && r != '\n' && r != '\t' }) {
+		return Comment{}, errors.New("a comment cannot contain control characters")
+	}
 	if (x == nil) != (y == nil) || (x != nil && (*x < 0 || *x > 1 || *y < 0 || *y > 1)) {
 		return Comment{}, fmt.Errorf("a pin needs x and y between 0 and 1")
 	}
@@ -126,14 +132,19 @@ func (s Store) AddComment(p, n, path string, version int, x, y *float64, text st
 	id := make([]byte, 5)
 	_, _ = rand.Read(id)
 	e := commentEvent{Type: "comment", ID: hex.EncodeToString(id), Path: path, Version: version, X: x, Y: y, Text: text, At: s.now()}
-	if err = s.appendComment(p, n, e); err != nil {
+	if err = s.appendComment(p, n, e, maxCommentsFile); err != nil {
 		return Comment{}, err
 	}
 	comments, err := s.Comments(p, n)
 	if err != nil {
 		return Comment{}, err
 	}
-	return comments[len(comments)-1], nil
+	for _, c := range comments {
+		if c.ID == e.ID {
+			return c, nil
+		}
+	}
+	return Comment{}, errors.New("the comment was not saved")
 }
 
 // Resolve marks comments as done or open again.
@@ -157,27 +168,45 @@ func (s Store) Resolve(p, n string, ids []string, resolved bool) error {
 		}
 	}
 	for _, id := range ids {
-		if err = s.appendComment(p, n, commentEvent{Type: "resolve", ID: id, Resolved: resolved, At: s.now()}); err != nil {
+		// Resolving stays possible for a while after comments hit their limit.
+		if err = s.appendComment(p, n, commentEvent{Type: "resolve", ID: id, Resolved: resolved, At: s.now()}, 2*maxCommentsFile); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// appendComment writes one event. Callers hold the store lock, so a
-// concurrent unpublish cannot move the artifact meanwhile.
-func (s Store) appendComment(p, n string, e commentEvent) error {
-	path := s.commentsPath(p, n)
-	if info, err := os.Stat(path); err == nil && info.Size() > maxCommentsFile {
-		return fmt.Errorf("%s/%s has too many comments; publish a new version or name", p, n)
-	}
+// appendComment writes one event unless the log is larger than limit. Callers
+// hold the store lock, so a concurrent unpublish cannot move the artifact
+// meanwhile.
+func (s Store) appendComment(p, n string, e commentEvent, limit int64) error {
 	line, err := json.Marshal(e)
 	if err != nil {
 		return err
 	}
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
+	f, err := os.OpenFile(s.commentsPath(p, n), os.O_APPEND|os.O_CREATE|os.O_RDWR, 0600)
 	if err != nil {
 		return err
+	}
+	info, err := f.Stat()
+	if err != nil {
+		f.Close()
+		return err
+	}
+	if info.Size() > limit {
+		f.Close()
+		return fmt.Errorf("%s/%s has too many comments; unpublish it or publish under a new name", p, n)
+	}
+	// A crash can leave a torn last line; the new event starts on its own.
+	last := []byte{'\n'}
+	if info.Size() > 0 {
+		if _, err = f.ReadAt(last, info.Size()-1); err != nil {
+			f.Close()
+			return err
+		}
+	}
+	if last[0] != '\n' {
+		line = append([]byte{'\n'}, line...)
 	}
 	if _, err = f.Write(append(line, '\n')); err != nil {
 		f.Close()

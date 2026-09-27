@@ -4,9 +4,10 @@
   if (!items.length || !box || !box.showModal) return;
   function q(selector) { return box.querySelector(selector); }
   var stage = q(".lb-stage"), name = q(".lb-name"), meta = q(".lb-meta"), count = q(".lb-count"), original = q(".lb-original");
-  var list = q(".lb-list"), form = q(".lb-form"), text = q("textarea"), note = q(".lb-pin-note"), status = q(".lb-error");
+  var list = q(".lb-list"), form = q(".lb-form"), text = q("textarea"), send = q(".lb-actions button"), note = q(".lb-pin-note"), status = q(".lb-error");
   var version = Number(box.dataset.version), api = box.dataset.api, source = box.dataset.comments;
-  var current = 0, comments = [], pending = null, active = "";
+  var current = 0, comments = [], loaded = false, busy = false, pending = null, active = "";
+  var drafts = {}; // unsent text and pin per file while browsing
 
   function href(f) { return f.querySelector("a.thumb").getAttribute("href"); }
   function el(tag, cls, content) {
@@ -34,11 +35,20 @@
     });
     return out;
   }
+  // load never fails: errors show in the viewer and keep the last comments.
   function load() {
     return fetch(source, { cache: "no-store" })
-      .then(function (r) { return r.ok ? r.text() : ""; })
-      .catch(function () { return ""; })
-      .then(function (body) { comments = parse(body); badges(); });
+      .then(function (r) {
+        if (r.ok) return r.text();
+        if (r.status === 404) return ""; // no comments yet
+        throw new Error("Could not load comments (HTTP " + r.status + ").");
+      }, function () { throw new Error("Could not load comments."); })
+      .then(function (body) { comments = parse(body); }, showError)
+      .then(function () {
+        loaded = true;
+        badges();
+        if (box.open) render();
+      });
   }
   function forPath(path) { return comments.filter(function (c) { return c.path === path; }); }
   function badges() {
@@ -97,7 +107,7 @@
     list.replaceChildren();
     var path = items[current].id;
     var shown = forPath(path).sort(function (a, b) { return (b.version === version) - (a.version === version); });
-    if (!shown.length) list.appendChild(el("li", "empty", "No comments yet."));
+    if (!shown.length) list.appendChild(el("li", "empty", loaded ? "No comments yet." : "Loading comments…"));
     shown.forEach(function (c) {
       var li = el("li", (c.resolved ? "resolved" : "") + (c.id === active ? " active" : ""));
       li.dataset.id = c.id;
@@ -108,8 +118,16 @@
       var check = el("input");
       check.type = "checkbox";
       check.checked = c.resolved;
+      check.setAttribute("aria-label", "Mark #" + c.number + " done");
       check.addEventListener("change", function () {
-        post(api + "/resolve", { ids: [c.id], resolved: check.checked }).then(load).then(render, showError);
+        status.textContent = "";
+        post(api + "/resolve", { ids: [c.id], resolved: check.checked })
+          .then(load, function (err) { showError(err); render(); })
+          .then(function () { // the list was drawn anew; keep the keyboard focus
+            [].slice.call(list.children).forEach(function (li) {
+              if (li.dataset.id === c.id) li.querySelector("input").focus();
+            });
+          });
       });
       done.appendChild(check);
       done.appendChild(document.createTextNode(" done"));
@@ -120,6 +138,7 @@
       list.appendChild(li);
     });
     note.textContent = pending ? "Pin " + nextNumber() + " placed" : "";
+    send.disabled = busy || !loaded;
   }
   function render() { renderPins(); renderList(); }
   // Highlighting only toggles classes, so elements under the pointer stay.
@@ -136,6 +155,7 @@
   function showError(err) { status.textContent = err.message; }
 
   function show(n) {
+    if (box.open) drafts[items[current].id] = { text: text.value, pending: pending };
     current = (n + items.length) % items.length;
     var f = items[current];
     var media = document.createElement(f.dataset.video ? "video" : "img");
@@ -152,7 +172,9 @@
     }
     stage.replaceChildren(media);
     q(".lb-media").scrollTop = 0;
-    pending = null;
+    var draft = drafts[f.id] || {};
+    text.value = draft.text || "";
+    pending = draft.pending || null;
     active = "";
     status.textContent = "";
     name.textContent = f.dataset.name;
@@ -170,15 +192,26 @@
 
   form.addEventListener("submit", function (e) {
     e.preventDefault();
-    var body = { path: items[current].id, version: version, text: text.value.trim() };
-    if (!body.text) return;
+    var path = items[current].id, sent = text.value.trim();
+    if (!sent || busy || !loaded) return;
+    var body = { path: path, version: version, text: sent };
     if (pending) { body.x = pending.x; body.y = pending.y; }
+    busy = true;
+    send.disabled = true;
     status.textContent = "";
     post(api, body).then(function () {
-      text.value = "";
-      pending = null;
+      // Clear only what was sent: the viewer may show another file by now.
+      if (items[current].id === path && text.value.trim() === sent) {
+        text.value = "";
+        pending = null;
+      } else if (drafts[path] && drafts[path].text.trim() === sent) {
+        delete drafts[path];
+      }
       return load();
-    }).then(render, showError);
+    }, showError).then(function () {
+      busy = false;
+      send.disabled = !loaded;
+    });
   });
   items.forEach(function (f, n) {
     f.querySelector("a.thumb").addEventListener("click", function (e) {
@@ -203,9 +236,10 @@
   });
   // Escape while writing leaves the text field instead of closing the viewer.
   box.addEventListener("cancel", function (e) {
-    if (document.activeElement === text && text.value.trim()) { e.preventDefault(); text.blur(); }
+    if (document.activeElement === text && text.value.trim()) { e.preventDefault(); send.focus(); }
   });
   box.addEventListener("close", function () {
+    drafts[items[current].id] = { text: text.value, pending: pending };
     stage.replaceChildren();
     items[current].querySelector("a.thumb").focus({ preventScroll: true });
     items[current].scrollIntoView({ block: "center" });
@@ -218,11 +252,10 @@
     startX = null;
     if (Math.abs(dx) > 60) show(current + (dx < 0 ? 1 : -1));
   });
-  load().then(function () {
-    var target = location.hash.slice(1);
-    try { target = decodeURIComponent(target); } catch (e) { /* keep the raw anchor */ }
-    for (var i = 0; target && i < items.length; i++) {
-      if (items[i].id === target) { open(i); break; }
-    }
-  });
+  var target = location.hash.slice(1);
+  try { target = decodeURIComponent(target); } catch (e) { /* keep the raw anchor */ }
+  for (var i = 0; target && i < items.length; i++) {
+    if (items[i].id === target) { open(i); break; }
+  }
+  load();
 })();

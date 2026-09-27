@@ -294,38 +294,35 @@ func TestReadCookie(t *testing.T) {
 	}
 }
 
-func TestArtifactsRouteUpgradesOlderShape(t *testing.T) {
+func TestArtifactsRouteGetsDaemonProxy(t *testing.T) {
 	c := testConfig(t)
 	site := filepath.Join(c.dir, "artifacts", "site")
 	older := fmt.Sprintf(`{"admin":{"listen":"unix/%s","config":{"persist":false}},"apps":{"http":{"servers":{"devstation":{"listen":["127.0.0.1:8443"],"routes":[{"@id":"devstation-artifacts","match":[{"host":["artifacts.dev.example.com"]}],"handle":[{"handler":"headers","response":{"set":{"Cache-Control":["no-cache"]}}},{"handler":"file_server","root":%q}],"terminal":true},{"handle":[{"handler":"static_response","status_code":404}],"terminal":true}],"tls_connection_policies":[{}],"automatic_https":{"disable":true}}}},"tls":{}}}`, c.socket(), site)
 	if err := os.WriteFile(c.statePath(), []byte(older), 0600); err != nil {
 		t.Fatal(err)
 	}
-	routes, err := readRoutes(c.statePath())
-	if err != nil || len(routes) != 1 || routes[0].Kind != "artifacts" || routes[0].Path != site {
-		t.Fatalf("older route not read: %+v %v", routes, err)
-	}
 	reloads := 0
-	if err = ensureArtifactsRoute(c, site, func(args ...string) error {
+	if err := ensureArtifactsRoute(c, site, func(args ...string) error {
 		if args[0] == "reload" {
 			reloads++
 		}
 		return nil
 	}); err != nil || reloads != 1 {
-		t.Fatalf("upgrade: %v, %d reloads", err, reloads)
+		t.Fatalf("adding the proxy: %v, %d reloads", err, reloads)
 	}
 	data, _ := os.ReadFile(c.statePath())
 	if !strings.Contains(string(data), "unix/"+filepath.Join(c.dir, "daemon.sock")) || !strings.Contains(string(data), "/_devstation/*") {
 		t.Fatalf("daemon proxy missing: %s", data)
 	}
-	if err = ensureArtifactsRoute(c, site, func(...string) error { t.Fatal("reloaded a current route"); return nil }); err != nil {
-		t.Fatal(err)
+	// The proxy has no @id: it is not a named route, and older versions skip it.
+	if routes, err := readRoutes(c.statePath()); err != nil || len(routes) != 1 || routes[0].Kind != "artifacts" || routes[0].Path != site {
+		t.Fatalf("routes: %+v %v", routes, err)
 	}
-	// A subroute that proxies somewhere else is not an artifacts route.
-	tampered := strings.Replace(string(data), "daemon.sock", "other.sock", 1)
-	_ = os.WriteFile(c.statePath(), []byte(tampered), 0600)
-	if _, err = readRoutes(c.statePath()); err == nil {
-		t.Fatal("accepted a proxy to another socket")
+	// Once the proxy exists, publish leaves Caddy alone, even when other
+	// settings changed since the last apply.
+	c.Listen = "127.0.0.1:9443"
+	if err := ensureArtifactsRoute(c, site, func(...string) error { t.Fatal("reloaded a current route"); return nil }); err != nil {
+		t.Fatal(err)
 	}
 }
 

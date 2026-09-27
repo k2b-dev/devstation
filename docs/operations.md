@@ -262,8 +262,8 @@ dev comments resolve app/login-states 3fa2c1d9e0 7b41c0e2aa
 ```
 
 `--images` writes PNG copies of images that have pinned comments (PNG, JPEG,
-and GIF sources), named `vVERSION_PATH.png`. Open comments are red, resolved
-ones gray.
+and GIF sources up to 50 megapixels) to `DIR/vVERSION/PATH`, with `.png`
+appended for other formats. Open comments are red, resolved ones gray.
 
 Pages post comments to `/_devstation/comments/PROJECT/NAME` on the artifacts
 host. The `artifacts` route sends `/_devstation/` to `dev daemon`, the one
@@ -283,10 +283,12 @@ Without the daemon, pages still show existing comments and report that new
 ones cannot be sent. The daemon accepts only JSON requests whose `Origin`
 matches the host, so other sites cannot post through a visitor's browser.
 There is no login: everyone who can reach the listener can comment, as they
-can read. Comments are plain text of up to 4000 characters and are shown as
-text, never as HTML. They are stored as `comments.jsonl` in the artifact's
-directory, readable at `/PROJECT/NAME/comments.jsonl`, and removed with the
-artifact; one artifact holds up to 1 MiB of comments.
+can read. Comments are plain text of up to 4000 characters without control
+characters (line breaks and tabs are fine) and are shown as text, never as
+HTML. They are stored as `comments.jsonl` in the artifact's directory,
+readable at `/PROJECT/NAME/comments.jsonl`, and removed with the artifact. One
+artifact takes new comments until it holds 1 MiB of them; marking comments
+done keeps working beyond that.
 
 ## Screenshots
 

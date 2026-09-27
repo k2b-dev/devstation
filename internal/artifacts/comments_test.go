@@ -50,6 +50,7 @@ func TestCommentsLifecycle(t *testing.T) {
 		{"a-dark-1440.png", 1, fp(0.5), nil, "x"},
 		{"a-dark-1440.png", 1, nil, nil, "   "},
 		{"a-dark-1440.png", 1, nil, nil, strings.Repeat("x", maxCommentRunes+1)},
+		{"a-dark-1440.png", 1, nil, nil, "fine\x1b[1A\x1b[2K\rresolved"},
 	} {
 		if _, err := s.AddComment("p", "n", bad.path, bad.version, bad.x, bad.y, bad.text); err == nil {
 			t.Fatalf("accepted %+v", bad)
@@ -71,6 +72,10 @@ func TestCommentsLifecycle(t *testing.T) {
 	f.Close()
 	if cs, err = s.Comments("p", "n"); err != nil || len(cs) != 3 {
 		t.Fatalf("torn line: %d %v", len(cs), err)
+	}
+	// The next comment starts on a new line instead of joining the torn one.
+	if c4, err := s.AddComment("p", "n", "a-dark-1440.png", 1, nil, nil, "after\ta crash"); err != nil || c4.Text != "after\ta crash" || c4.Number != 3 {
+		t.Fatalf("after a torn line: %+v %v", c4, err)
 	}
 	// Comments go with the artifact.
 	if _, err = s.Unpublish([]string{"p/n"}); err != nil {
@@ -142,6 +147,9 @@ func TestAnnotate(t *testing.T) {
 		t.Fatalf("%v %v", files, err)
 	}
 	out := files["v1/a-dark-1440.png"]
+	if out != filepath.Join(dir, "v1", "a-dark-1440.png") {
+		t.Fatalf("written to %s", out)
+	}
 	data, _ := os.ReadFile(out)
 	img, err := png.Decode(bytes.NewReader(data))
 	if err != nil {
@@ -149,7 +157,7 @@ func TestAnnotate(t *testing.T) {
 	}
 	// The pin is drawn at 25 % / 50 %; the digit's white strokes sit at its center.
 	r, g, b, _ := img.At(50-10, 50).RGBA()
-	if r>>8 != 0xe5 || g>>8 != 0x48 || b>>8 != 0x4d {
+	if r>>8 != 0xc6 || g>>8 != 0x2f || b>>8 != 0x35 {
 		t.Fatalf("no pin at the comment position: %x %x %x (%s)", r>>8, g>>8, b>>8, c.ID)
 	}
 	if r, _, _, _ := img.At(190, 10).RGBA(); r>>8 != 30 {

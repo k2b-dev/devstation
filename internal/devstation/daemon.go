@@ -65,8 +65,12 @@ func serveDaemon(ctx context.Context, store artifacts.Store, socket string, out 
 		listener.Close()
 		return err
 	}
-	server := &http.Server{Handler: daemonHandler(store), ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 30 * time.Second}
+	// Caddy keeps idle upstream connections for two minutes; closing them
+	// earlier races with its next request.
+	server := &http.Server{Handler: daemonHandler(store), ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 5 * time.Minute}
+	stopped := make(chan struct{})
 	go func() {
+		defer close(stopped)
 		<-ctx.Done()
 		shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
@@ -76,5 +80,6 @@ func serveDaemon(ctx context.Context, store artifacts.Store, socket string, out 
 	if err = server.Serve(listener); !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}
+	<-stopped // requests in progress finish first
 	return nil
 }

@@ -1,7 +1,6 @@
 package devstation
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -201,7 +200,7 @@ func runArtifacts(c Config, args []string, out io.Writer) error {
 				life = "expires " + a.Expires.Format("2006-01-02")
 			}
 			if a.Comments > 0 {
-				life += fmt.Sprintf("\t%d open comments", a.Comments)
+				life += fmt.Sprintf(", %d open comments", a.Comments)
 			}
 			fmt.Fprintf(out, "%s/%s\tv%d\t%s\t%s\t%s\n", a.Project, a.Name, a.Version, a.Summary, life, a.URL)
 		}
@@ -245,8 +244,9 @@ func runArtifacts(c Config, args []string, out io.Writer) error {
 	return fmt.Errorf("unknown command %q", args[0])
 }
 
-// ensureArtifactsRoute adds the "artifacts" route on first use. It is the only
-// artifact command that changes Caddy's configuration.
+// ensureArtifactsRoute adds the "artifacts" route on first use, and the proxy to
+// `dev daemon` where a configuration was saved before it existed. It is the
+// only artifact command that changes Caddy's configuration.
 func ensureArtifactsRoute(c Config, site string, run runner) error {
 	check := func(routes []Route) (bool, error) {
 		for _, r := range routes {
@@ -263,19 +263,12 @@ func ensureArtifactsRoute(c Config, site string, run runner) error {
 		}
 		return false, nil
 	}
-	// current reports whether the route exists in the shape this version
-	// writes; a route saved by an older version is rewritten once.
 	current := func(routes []Route) (bool, error) {
 		ok, err := check(routes)
 		if !ok || err != nil {
 			return false, err
 		}
-		want, err := render(c, routes)
-		if err != nil {
-			return false, err
-		}
-		have, err := os.ReadFile(c.statePath())
-		return err == nil && bytes.Equal(want, have), nil
+		return daemonRouted(c.statePath()), nil
 	}
 	routes, err := readRoutes(c.statePath())
 	if err != nil {

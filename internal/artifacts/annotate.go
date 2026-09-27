@@ -6,6 +6,7 @@ import (
 	"image/color"
 	"image/draw"
 	"image/png"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -18,15 +19,19 @@ var digits = [10][5]uint8{
 	{7, 4, 7, 1, 7}, {7, 4, 7, 5, 7}, {7, 1, 1, 1, 1}, {7, 5, 7, 5, 7}, {7, 5, 7, 1, 7},
 }
 
+// maxAnnotatePixels bounds the memory for decoding one image, about 200 MB.
+const maxAnnotatePixels = 50_000_000
+
 var (
-	pinFill   = color.RGBA{0xe5, 0x48, 0x4d, 0xff}
-	pinDone   = color.RGBA{0x88, 0x8f, 0x9a, 0xff}
+	pinFill   = color.RGBA{0xc6, 0x2f, 0x35, 0xff}
+	pinDone   = color.RGBA{0x6b, 0x72, 0x80, 0xff}
 	pinBorder = color.RGBA{0xff, 0xff, 0xff, 0xff}
 )
 
-// Annotate writes a copy of every image with pinned comments into dir, with
-// each comment's number drawn in a circle where it was placed. It returns
-// the written files, keyed "vVERSION/PATH".
+// Annotate writes a copy of every image with pinned comments into dir, as
+// vVERSION/PATH (plus .png for other formats), with each comment's number
+// drawn in a circle where it was placed. It returns the written files, keyed
+// "vVERSION/PATH".
 func (s Store) Annotate(p, n string, comments []Comment, dir string) (map[string]string, error) {
 	groups := map[string][]Comment{}
 	for _, c := range comments {
@@ -35,16 +40,27 @@ func (s Store) Annotate(p, n string, comments []Comment, dir string) (map[string
 			groups[key] = append(groups[key], c)
 		}
 	}
-	written := map[string]string{}
+	written, taken := map[string]string{}, map[string]bool{}
 	for key, cs := range groups {
 		src, err := os.Open(filepath.Join(s.versionDir(p, n, cs[0].Version), filepath.FromSlash(cs[0].Path)))
 		if err != nil {
 			return written, err
 		}
+		// Formats without a Go decoder (webp, svg, avif) and huge images keep
+		// their plain list entry.
+		size, _, err := image.DecodeConfig(src)
+		if err != nil || size.Width*size.Height > maxAnnotatePixels {
+			src.Close()
+			continue
+		}
+		if _, err = src.Seek(0, io.SeekStart); err != nil {
+			src.Close()
+			return written, err
+		}
 		img, _, err := image.Decode(src)
 		src.Close()
 		if err != nil {
-			continue // formats without a Go decoder (webp, svg, avif) keep their plain list entry
+			continue
 		}
 		canvas := image.NewRGBA(img.Bounds())
 		draw.Draw(canvas, canvas.Bounds(), img, img.Bounds().Min, draw.Src)
@@ -59,10 +75,15 @@ func (s Store) Annotate(p, n string, comments []Comment, dir string) (map[string
 			cy := b.Min.Y + int(*c.Y*float64(b.Dy()))
 			drawPin(canvas, cx, cy, radius, c.Number, fill)
 		}
-		name := strings.ReplaceAll(key, "/", "_")
-		name = strings.TrimSuffix(name, filepath.Ext(name)) + ".png"
-		out := filepath.Join(dir, name)
-		if err = os.MkdirAll(dir, 0700); err != nil {
+		out := filepath.Join(dir, filepath.FromSlash(key))
+		if !strings.EqualFold(filepath.Ext(out), ".png") {
+			out += ".png"
+		}
+		if taken[out] { // x.jpg and x.jpg.png
+			return written, fmt.Errorf("two images would be written to %s", out)
+		}
+		taken[out] = true
+		if err = os.MkdirAll(filepath.Dir(out), 0700); err != nil {
 			return written, err
 		}
 		f, err := os.OpenFile(out, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0600)
