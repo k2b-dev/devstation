@@ -185,6 +185,16 @@ Pages are generated from the files:
   next to `x.png`, is linked from that image. Clicking an image opens a viewer
   on the page with its name, row, and column; the arrow keys or a swipe move
   to the neighbors, Escape closes it, and the address carries the image anchor.
+  − and + (also the keys, and Ctrl/⌘ with the wheel or a trackpad pinch at the
+  pointer) zoom from the fitted size up to 400 %; `0` or the level button
+  switches between fitted and 100 %.
+- **Captions:** a `captions.txt` in a folder of images gives its rows (or other
+  images, by name without extension) a short title and at most a sentence.
+  The title shows next to the row (the sentence as its tooltip); the viewer
+  shows both. Blocks are separated by blank lines;
+  the first line is `NAME: Title`, the rest the text. Titles over 60 and texts
+  over 160 characters are cut, names without an image are skipped, and publish
+  warns about both. The file itself is not listed.
 - **Plan:** each Markdown file up to 2 MiB becomes a section, `index.md` or
   `README.md` first, up to 8 MiB per version; the rest are listed as files. GitHub-flavored tables,
   task lists, and strikethrough work; raw HTML is dropped. Heading anchors
@@ -248,20 +258,45 @@ publish only what everyone who can reach the listener may see.
 
 In the image viewer, click the image to pin a spot, type a comment, and send it
 with the button or Ctrl/⌘+Enter. Comments without a pin are fine too. Each
-comment gets a number per image and version, shown in a circle on the image.
-Thumbnails show how many comments are open, and the viewer lists all comments
-of an image with their version; "done" marks one as resolved. Pages switch
+comment gets a number per image and version, shown in a circle next to a dot
+on the pinned spot. Thumbnails show how many comments are open, and the viewer
+lists all comments of an image with their version; the checkbox marks one as
+done, and the trash button (click twice) deletes it for good. A deleted
+comment keeps its number, so the others keep theirs. Pages switch
 between light, dark, and the system setting with the button at the top right;
 the choice is stored in the browser and applied before the page is drawn.
+
+**Plans.** On a page with Markdown documents, select text and press
+Comments (or `c`): the comment keeps the source lines of the selected blocks,
+the quote, and the heading path above it. A numbered chip marks the block, the
+quote is highlighted, and the panel on the right (a sheet on phones) lists the
+comments; without a selection, a comment is about the whole document.
+Publishing stamps each rendered block with its lines (`data-line="A-B"`).
+
+**Mockups.** The stable URL of an HTML mockup opens its review page,
+`review/VERSION/`, which shows the unchanged mockup from `v/VERSION/` in a
+frame. Outside comment mode the mockup works as usual. Comment (or `c`) turns
+comment mode on: the next click pins the element under it instead of acting,
+and the comment keeps the page and route, the element (selector, text, and
+the dialog, form, or section around it), the clicks made since the page
+loaded, and the viewport and theme. Pins follow their elements and hide while
+an element is gone or covered, for example until its dialog opens again.
+Without a pin, a comment is about the page as shown.
 
 Agents read and resolve comments from the command line:
 
 ```sh
-dev comments app/login-states            # open comments with image, version, pin, link
+dev comments app/login-states            # open comments with what they point at and a link
 dev comments app/login-states --all --json
 dev comments app/login-states --images /tmp/pins   # copies with numbered pins drawn in
 dev comments resolve app/login-states 3fa2c1d9e0 7b41c0e2aa
 ```
+
+A plan comment prints `plan.md:42-44` with the quote, the section, and the
+source lines; a mockup comment prints the page, viewport, steps, element, and
+a `shot:` line, a `dev shot` command that opens that state (`--click` for the
+steps, `--hover` on the element). The comment text follows as `> ` lines, so
+it cannot pass for these details.
 
 `--images` writes PNG copies of images that have pinned comments (PNG, JPEG,
 and GIF sources up to 50 megapixels) to `DIR/vVERSION/PATH`, with `.png`
@@ -282,16 +317,27 @@ systemctl --user daemon-reload
 systemctl --user enable --now devstation-daemon
 ```
 
-Pages published before v0.5 get the comment panel and the theme button with
-the artifact's next publish; their older version pages stay as they were.
+Pages get new comment features with the artifact's next publish (mockups get
+their review page then); older version pages stay as they were. After
+`dev update`, restart the daemon too (`systemctl --user restart
+devstation-daemon`): an older daemon stores comments without the places they
+point at, and pages then say so.
 Without the daemon, pages still show existing comments and report that new
 ones cannot be sent. The daemon accepts only JSON requests whose `Origin`
 matches the host, so other sites cannot post through a visitor's browser.
 There is no login: everyone who can reach the listener can comment, as they
 can read. Comments are plain text of up to 4000 characters without control
-characters (line breaks and tabs are fine) and are shown as text, never as
-HTML. They are stored as `comments.jsonl` in the artifact's directory,
-readable at `/PROJECT/NAME/comments.jsonl`, and removed with the artifact. One
+or text direction characters (line breaks and tabs are fine) and are shown as
+text, never as HTML; the same goes for quotes, selectors, and steps. Mockups
+share the origin of the comment API, which their review page needs to reach
+into the frame, so a mockup's own scripts could add, resolve, or delete
+comments too; publish only mockups you trust. Known limits: listeners that a
+mockup registers on its window before comment mode starts still see clicks in
+comment mode, clicks inside a mockup's own frames are not caught, and when a
+quote occurs twice in its paragraph, the first occurrence is highlighted.
+Comments are stored as `comments.jsonl` in the artifact's directory,
+readable at `/PROJECT/NAME/comments.jsonl`, and removed with the artifact;
+deleting a comment rewrites the file without its text. One
 artifact takes new comments until it holds 1 MiB of them; marking comments
 done keeps working beyond that.
 
@@ -315,8 +361,8 @@ options apply to every URL of one command.
   your user's rights, so capture only pages you trust.
 - **Isolation:** every screenshot starts in a fresh browser context, so
   storage, cookies, and cache never carry over between themes, widths, or URLs.
-- **Themes and sizes:** `--themes light,dark` (also `hell` and `dunkel`) sets
-  `prefers-color-scheme`. `--theme-cookie NAME` also sets the cookie `NAME` to
+- **Themes and sizes:** `--themes` (default `light`; `light,dark` for both,
+  also `hell` and `dunkel`) sets `prefers-color-scheme`. `--theme-cookie NAME` also sets the cookie `NAME` to
   `light` or `dark` for applications that read the theme from a cookie; when
   light and dark come out identical, a warning suggests it. `--widths
   1440,390` sets the viewport width; the height is 900 px, or 844 px below

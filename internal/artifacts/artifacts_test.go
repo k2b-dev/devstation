@@ -279,19 +279,40 @@ func TestSiteMode(t *testing.T) {
 	if read(t, filepath.Join(s.versionDir("wf", "mockup", 1), "index.html")) != "<script>app()</script>" {
 		t.Fatal("site index was modified")
 	}
-	if cur := read(t, filepath.Join(s.artifact("wf", "mockup"), "index.html")); !strings.Contains(cur, `location.replace("./v/1/"`) || strings.Contains(cur, "lightbox") {
-		t.Fatalf("stable page does not redirect: %s", cur)
+	if cur := read(t, filepath.Join(s.artifact("wf", "mockup"), "index.html")); !strings.Contains(cur, `location.replace("./review/1/"`) || strings.Contains(cur, "lightbox") {
+		t.Fatalf("stable page does not redirect to the review page: %s", cur)
+	}
+	review := read(t, filepath.Join(s.artifact("wf", "mockup"), "review", "1", "index.html"))
+	for _, want := range []string{`<iframe id="mockup" title="Mockup: mockup" src="../../v/1/index.html"`, `data-base="../../v/1/"`, `data-pages="[&#34;index.html&#34;]"`, `id="comment-panel"`} {
+		if !strings.Contains(review, want) {
+			t.Errorf("review page lacks %s", want)
+		}
 	}
 	single := filepath.Join(t.TempDir(), "bilder zuordnung.html")
 	write(t, single, []byte("<p>mock</p>"))
 	if r, err = s.Publish(Options{Project: "wf", Name: "single", Paths: []string{single}}); err != nil || r.Version.Entry != "bilder zuordnung.html" {
 		t.Fatalf("%v %+v", err, r.Version)
 	}
-	if cur := read(t, filepath.Join(s.artifact("wf", "single"), "index.html")); !strings.Contains(cur, "./v/1/bilder%20zuordnung.html") {
+	if cur := read(t, filepath.Join(s.artifact("wf", "single"), "index.html")); !strings.Contains(cur, "./review/1/") {
 		t.Fatalf("single file redirect: %s", cur)
+	}
+	if rv := read(t, filepath.Join(s.artifact("wf", "single"), "review", "1", "index.html")); !strings.Contains(rv, `src="../../v/1/bilder%20zuordnung.html"`) {
+		t.Fatalf("single file review page: %s", rv)
 	}
 	if v := read(t, filepath.Join(s.versionDir("wf", "single", 1), "index.html")); !strings.Contains(v, "./bilder%20zuordnung.html") {
 		t.Fatalf("version index redirect: %s", v)
+	}
+	// A single file that is not HTML is served as it is, without a review page.
+	pdf := filepath.Join(t.TempDir(), "notes.pdf")
+	write(t, pdf, []byte("%PDF-1.4"))
+	if _, err = s.Publish(Options{Project: "wf", Name: "pdf", Paths: []string{pdf}}); err != nil {
+		t.Fatal(err)
+	}
+	if cur := read(t, filepath.Join(s.artifact("wf", "pdf"), "index.html")); !strings.Contains(cur, "./v/1/notes.pdf") {
+		t.Fatalf("pdf redirect: %s", cur)
+	}
+	if _, err = os.Stat(filepath.Join(s.artifact("wf", "pdf"), "review")); !os.IsNotExist(err) {
+		t.Fatalf("pdf got a review page: %v", err)
 	}
 }
 

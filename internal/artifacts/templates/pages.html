@@ -51,19 +51,21 @@
 {{if .Dir}}<h2><a href="#{{.ID}}">{{.Dir}}/</a></h2>{{end}}
 {{if .Rows}}<div class="matrix" style="{{.Grid}}">
 <div class="corner"></div>{{range .Columns}}<div class="col">{{.}}</div>{{end}}
-{{range .Rows}}<div class="rowlabel">{{if .Label}}{{.Label}}{{else}}—{{end}}</div>{{range .Cells}}{{template "cell" .}}{{end}}
+{{range .Rows}}<div class="rowlabel"{{if .Caption.Text}} title="{{.Caption.Text}}"{{end}}>{{if .Caption.Title}}<span class="cap">{{.Caption.Title}}</span>{{end}}<span class="label">{{if .Label}}{{.Label}}{{else}}—{{end}}</span></div>{{range .Cells}}{{template "cell" .}}{{end}}
 {{end}}</div>{{end}}
 {{if .Plain}}<div class="plain">{{range .Plain}}{{template "cell" .}}{{end}}</div>{{end}}
 {{if .Other}}<details class="files"{{if lt (len .Other) 12}} open{{end}}><summary>{{len .Other}} other file{{if gt (len .Other) 1}}s{{end}}</summary><ul>{{range .Other}}<li><a href="{{.Href}}">{{.Name}}</a> <span class="muted">{{.Size}}</span></li>{{end}}</ul></details>{{end}}
 </section>
 {{end}}
 {{if and (not .Docs) (not .Sections)}}<p class="muted">This version has no files to show.</p>{{end}}
-{{if .HasMedia}}<dialog id="lightbox" class="lightbox" aria-label="Image viewer" data-comments="{{.CommentsHref}}" data-api="{{.CommentsAPI}}" data-version="{{.Version}}">
-<div class="lb-bar"><span class="lb-count"></span><span class="lb-name"></span><span class="lb-meta"></span><a class="lb-original" target="_blank" rel="noopener">original</a><button type="button" class="lb-close" aria-label="Close (Esc)">✕</button></div>
+{{if or .HasMedia .Docs}}<div id="comment-config" hidden data-comments="{{.CommentsHref}}" data-api="{{.CommentsAPI}}" data-version="{{.Version}}"></div>
+<script>{{comments}}</script>{{end}}
+{{if .HasMedia}}<dialog id="lightbox" class="lightbox" aria-label="Image viewer">
+<div class="lb-bar"><span class="lb-count"></span><span class="lb-name"></span><span class="lb-meta"></span><span class="lb-zoom"><button type="button" class="lb-zoom-out" aria-label="Zoom out (−)">−</button><button type="button" class="lb-zoom-level" aria-label="Switch between fit and 100% (0)">Fit</button><button type="button" class="lb-zoom-in" aria-label="Zoom in (+)">+</button></span><a class="lb-original" target="_blank" rel="noopener">original</a><button type="button" class="lb-close" aria-label="Close (Esc)">✕</button><p class="lb-caption" hidden><strong></strong> <span></span></p></div>
 <div class="lb-main">
 <div class="lb-media"><div class="lb-stage"></div></div>
 <aside class="lb-comments" aria-label="Comments">
-<ol class="lb-list"></ol>
+<ol class="lb-list" tabindex="-1"></ol>
 <form class="lb-form">
 <textarea rows="3" maxlength="4000" placeholder="Comment on this image. Click the image first to pin a spot."></textarea>
 <div class="lb-actions"><span class="lb-pin-note"></span><button type="submit">Comment</button></div>
@@ -75,11 +77,37 @@
 <button type="button" class="lb-nav lb-next" aria-label="Next (→)">›</button>
 </dialog>
 <script>{{lightbox}}</script>{{end}}
+{{if .Docs}}{{template "panel" .}}
+<script>{{plan}}</script>{{end}}
 {{template "foot" .}}{{end}}
 
-{{define "cell"}}{{if .Missing}}<div class="cell missing"></div>{{else}}<figure class="cell" id="{{.ID}}" data-name="{{.Name}}"{{if .Row}} data-row="{{.Row}}"{{end}}{{if .Col}} data-col="{{.Col}}"{{end}}{{if .Section}} data-section="{{.Section}}/"{{end}}{{if .Video}} data-video="1"{{end}}>
+{{define "panel"}}<aside id="comment-panel" class="cpanel" aria-label="Comments" data-root="{{.Root}}" hidden>
+<div class="cp-head"><strong>Comments</strong> <span class="cp-count"></span><button type="button" class="cp-close" aria-label="Hide comments (Esc)">✕</button></div>
+<ol class="cp-list" tabindex="-1"></ol>
+<form class="cp-form">
+<p class="cp-anchor" hidden><span></span> <button type="button" aria-label="Comment on the whole document instead">×</button></p>
+{{if .MultiDoc}}<select class="cp-doc" aria-label="Document">{{range .Docs}}<option>{{.ID}}</option>{{end}}</select>{{end}}
+<textarea rows="3" maxlength="4000" placeholder="{{.Hint}}"></textarea>
+<div class="cp-actions"><button type="submit" class="cp-send">Comment</button></div>
+<p class="cp-error" role="status"></p>
+</form>
+</aside>
+{{if .Docs}}<button type="button" class="cp-toggle" aria-controls="comment-panel">Comments</button>{{end}}{{end}}
+
+{{define "review"}}{{template "head" .}}
+<section class="rv">
+<div class="rv-bar"><strong class="rv-title">{{.Heading}}</strong> <span class="rv-page"></span>{{if gt (len .Versions) 1}}<span class="versions">{{range .Versions}}{{if .Current}}<strong>v{{.N}}</strong>{{else}}<a href="{{.Href}}">v{{.N}}</a>{{end}} {{end}}</span>{{end}}<button type="button" class="rv-mode" aria-pressed="false" title="Comment on an element (c)">Comment</button><button type="button" class="cp-toggle rv-toggle" aria-controls="comment-panel">Comments</button><a class="rv-raw" href="{{.Raw}}" target="_blank" rel="noopener">Open mockup ↗</a></div>
+<div class="rv-stage"><iframe id="mockup" title="Mockup: {{.Heading}}" src="{{.Raw}}" allow="fullscreen"></iframe><div class="rv-overlay"></div><p class="rv-status" role="status"></p></div>
+</section>
+<div id="comment-config" hidden data-comments="{{.CommentsHref}}" data-api="{{.CommentsAPI}}" data-version="{{.Version}}" data-base="{{.Base}}" data-entry="{{.Entry}}" data-pages="{{.Pages}}" data-reviews="{{.Reviews}}"></div>
+<script>{{comments}}</script>
+{{template "panel" .}}
+<script>{{review}}</script>
+{{template "foot" .}}{{end}}
+
+{{define "cell"}}{{if .Missing}}<div class="cell missing"></div>{{else}}<figure class="cell" id="{{.ID}}" data-name="{{.Name}}"{{if .Row}} data-row="{{.Row}}"{{end}}{{if .Col}} data-col="{{.Col}}"{{end}}{{if .Section}} data-section="{{.Section}}/"{{end}}{{if .Video}} data-video="1"{{end}}{{if .Caption.Title}} data-title="{{.Caption.Title}}"{{end}}{{if .Caption.Text}} data-text="{{.Caption.Text}}"{{end}}>
 <a class="thumb" href="{{.Href}}">{{if .Video}}<video src="{{.Href}}" muted playsinline preload="metadata"></video>{{else}}<img src="{{.Href}}" alt="{{.Name}}" loading="lazy" decoding="async"{{if .Width}} width="{{.Width}}" height="{{.Height}}"{{end}}>{{end}}</a>
-<figcaption><a class="anchor" href="#{{.ID}}">#</a> <span class="name">{{.Name}}</span>{{range .Attach}} <a href="{{.Href}}">{{.Name}}</a>{{end}}</figcaption>
+<figcaption>{{if and .Caption.Title (not .Row)}}<span class="cap"{{if .Caption.Text}} title="{{.Caption.Text}}"{{end}}>{{.Caption.Title}}</span> {{end}}<a class="anchor" href="#{{.ID}}">#</a> <span class="name">{{.Name}}</span>{{range .Attach}} <a href="{{.Href}}">{{.Name}}</a>{{end}}</figcaption>
 </figure>{{end}}{{end}}
 
 {{define "redirect"}}<!doctype html>

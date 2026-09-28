@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"net/url"
 	"path"
+	"sort"
 	"strings"
 	"unicode"
 
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/extension"
+	east "github.com/yuin/goldmark/extension/ast"
 	"github.com/yuin/goldmark/text"
 )
 
@@ -109,6 +111,7 @@ type parsedDoc struct {
 	path string
 	src  []byte
 	root ast.Node
+	code []string // source lines of the code blocks, in order
 }
 
 // renderDocs renders the documents of one page. Relative links and images are
@@ -122,7 +125,8 @@ func renderDocs(docs []parsedDocInput, base string, published map[string]bool) (
 	for _, d := range docs {
 		root := md.Parser().Parse(text.NewReader(d.src))
 		ids.assign(d.path, root, d.src)
-		parsed = append(parsed, parsedDoc{d.path, d.src, root})
+		code := stampLines(root, d.src)
+		parsed = append(parsed, parsedDoc{d.path, d.src, root, code})
 	}
 	anchor := func(doc, fragment string) string {
 		if id, ok := ids.byDoc[doc][fragment]; ok {
@@ -178,9 +182,77 @@ func renderDocs(docs []parsedDocInput, base string, published map[string]bool) (
 		if err := md.Renderer().Render(&buf, d.src, d.root); err != nil {
 			warnings = append(warnings, fmt.Sprintf("%s: %v", d.path, err))
 		}
-		out = append(out, buf.String())
+		out = append(out, stampCode(buf.String(), d.code))
 	}
 	return out, embedded, warnings
+}
+
+// stampLines marks paragraphs, headings, list items, and table rows with
+// their source lines as data-line="A-B" (1-based), so a comment on selected
+// text can name the lines it means. It returns the lines of the code blocks,
+// whose renderers drop attributes; see stampCode.
+func stampLines(root ast.Node, src []byte) []string {
+	var starts []int // offset of each line
+	for i := range src {
+		if i == 0 || src[i-1] == '\n' {
+			starts = append(starts, i)
+		}
+	}
+	lines := func(segs *text.Segments) string {
+		if segs == nil || segs.Len() == 0 {
+			return ""
+		}
+		first, last := segs.At(0), segs.At(segs.Len()-1)
+		lineOf := func(off int) int { return sort.SearchInts(starts, off+1) }
+		return fmt.Sprintf("%d-%d", lineOf(first.Start), lineOf(max(last.Start, last.Stop-1)))
+	}
+	var code []string
+	_ = ast.Walk(root, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering {
+			return ast.WalkContinue, nil
+		}
+		var l string
+		switch n.(type) {
+		case *ast.Paragraph, *ast.Heading:
+			l = lines(n.Lines())
+		case *ast.ListItem, *east.TableHeader, *east.TableRow:
+			// A list item covers its own text, not its sublist; a row its first cell.
+			if c := n.FirstChild(); c != nil {
+				l = lines(c.Lines())
+			}
+		case *ast.FencedCodeBlock, *ast.CodeBlock:
+			code = append(code, lines(n.Lines()))
+			return ast.WalkSkipChildren, nil
+		}
+		if l != "" {
+			n.SetAttributeString("data-line", []byte(l))
+		}
+		return ast.WalkContinue, nil
+	})
+	return code
+}
+
+// stampCode gives the n-th <pre> of a rendered document the lines of the
+// n-th code block. Safe mode escapes all text, so every "<pre><code" is a
+// code block; if the counts still differ, nothing is stamped.
+func stampCode(html string, code []string) string {
+	const tag = "<pre><code"
+	if strings.Count(html, tag) != len(code) {
+		return html
+	}
+	var b strings.Builder
+	for _, l := range code {
+		i := strings.Index(html, tag)
+		b.WriteString(html[:i])
+		if l != "" {
+			b.WriteString(`<pre data-line="` + l + `"><code`)
+		} else {
+			b.WriteString(tag)
+		}
+		html = html[i+len(tag):]
+	}
+	b.WriteString(html)
+	return b.String()
 }
 
 type parsedDocInput struct {

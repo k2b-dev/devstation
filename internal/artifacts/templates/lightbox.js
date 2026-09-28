@@ -3,84 +3,39 @@
   var box = document.getElementById("lightbox");
   if (!items.length || !box || !box.showModal) return;
   function q(selector) { return box.querySelector(selector); }
-  var stage = q(".lb-stage"), name = q(".lb-name"), meta = q(".lb-meta"), count = q(".lb-count"), original = q(".lb-original");
+  var caption = q(".lb-caption"), stage = q(".lb-stage"), name = q(".lb-name"), meta = q(".lb-meta"), count = q(".lb-count"), original = q(".lb-original");
   var list = q(".lb-list"), form = q(".lb-form"), text = q("textarea"), send = q(".lb-actions button"), note = q(".lb-pin-note"), status = q(".lb-error");
-  var version = Number(box.dataset.version), api = box.dataset.api, source = box.dataset.comments;
-  var current = 0, comments = [], loaded = false, loadError = "", busy = false, pending = null, active = "";
+  var D = devComments;
+  if (!D) return;
+  var version = D.version, current = 0, busy = false, pending = null, active = "";
   var drafts = {}; // unsent text and pin per file while browsing
 
   function href(f) { return f.querySelector("a.thumb").getAttribute("href"); }
-  function el(tag, cls, content) {
-    var e = document.createElement(tag);
-    if (cls) e.className = cls;
-    if (content) e.textContent = content;
-    return e;
-  }
-
-  // comments.jsonl is an append-only log: comments, then resolve events.
-  // Numbers count per version and file, as in `dev comments`.
-  function parse(body) {
-    var byID = {}, numbers = {}, out = [];
-    body.split("\n").forEach(function (line) {
-      var e;
-      try { e = JSON.parse(line); } catch (err) { return; }
-      if (e.type === "comment") {
-        var key = e.version + "/" + e.path;
-        numbers[key] = (numbers[key] || 0) + 1;
-        byID[e.id] = { id: e.id, path: e.path, version: e.version, number: numbers[key], x: e.x, y: e.y, text: e.text, at: e.at, resolved: false };
-        out.push(byID[e.id]);
-      } else if (e.type === "resolve" && byID[e.id]) {
-        byID[e.id].resolved = !!e.resolved;
-      }
-    });
-    return out;
-  }
-  // load never fails: errors show in the viewer and keep the last comments.
-  function load() {
-    return fetch(source, { cache: "no-store" })
-      .then(function (r) {
-        if (r.ok) return r.text();
-        if (r.status === 404) return ""; // no comments yet
-        throw new Error("Could not load comments (HTTP " + r.status + ").");
-      }, function () { throw new Error("Could not load comments."); })
-      .then(function (body) { comments = parse(body); loadError = ""; }, function (err) { loadError = err.message; showError(err); })
-      .then(function () {
-        loaded = true;
-        badges();
-        if (box.open) render();
-      });
-  }
-  function forPath(path) { return comments.filter(function (c) { return c.path === path; }); }
+  var el = D.el;
+  function forPath(path) { return D.comments.filter(function (c) { return c.path === path; }); }
   function badges() {
-    var total = 0;
     items.forEach(function (f) {
       var open = forPath(f.id).filter(function (c) { return !c.resolved; }).length;
-      total += open;
       var badge = f.querySelector(".pins");
       if (!open) { if (badge) badge.remove(); return; }
       if (!badge) { badge = el("span", "pins"); f.querySelector("figcaption").appendChild(badge); }
       badge.textContent = open + (open === 1 ? " comment" : " comments");
     });
-    var header = document.querySelector(".open-comments");
-    if (header) {
-      header.hidden = !total;
-      header.textContent = total + (total === 1 ? " open comment" : " open comments");
-    }
   }
+  D.on(function () {
+    badges();
+    if (D.error) showError(new Error(D.error));
+    if (box.open) render();
+  });
 
-  function post(url, body) {
-    return fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
-      .then(function (r) {
-        if (r.ok) return r;
-        return r.json().then(
-          function (j) { throw new Error(j.error || "HTTP " + r.status); },
-          function () { throw new Error("The Devstation daemon is not reachable (dev daemon)."); });
-      }, function () { throw new Error("The Devstation daemon is not reachable (dev daemon)."); });
-  }
-
-  function nextNumber() {
-    var path = items[current].id;
-    return forPath(path).filter(function (c) { return c.version === version; }).length + 1;
+  function nextNumber() { return D.next(items[current].id); }
+  // The circle sits up and to the right of the spot, or on the other side
+  // near an edge, so the spot stays visible.
+  function place(pin, x, y) {
+    pin.style.left = x * 100 + "%";
+    pin.style.top = y * 100 + "%";
+    pin.classList.toggle("flip-x", x > 0.9);
+    pin.classList.toggle("flip-y", y < 0.1);
   }
   function renderPins() {
     [].slice.call(stage.querySelectorAll(".pin")).forEach(function (p) { p.remove(); });
@@ -90,16 +45,14 @@
       var pin = el("button", "pin" + (c.resolved ? " resolved" : "") + (c.id === active ? " active" : ""), String(c.number));
       pin.dataset.id = c.id;
       pin.type = "button";
-      pin.style.left = c.x * 100 + "%";
-      pin.style.top = c.y * 100 + "%";
+      place(pin, c.x, c.y);
       pin.setAttribute("aria-label", "Comment " + c.number);
       pin.addEventListener("click", function (e) { e.stopPropagation(); highlight(c.id); });
       stage.appendChild(pin);
     });
     if (pending) {
       var p = el("span", "pin pending", String(nextNumber()));
-      p.style.left = pending.x * 100 + "%";
-      p.style.top = pending.y * 100 + "%";
+      place(p, pending.x, pending.y);
       stage.appendChild(p);
     }
   }
@@ -107,39 +60,16 @@
     list.replaceChildren();
     var path = items[current].id;
     var shown = forPath(path).sort(function (a, b) { return (b.version === version) - (a.version === version); });
-    if (!shown.length) list.appendChild(el("li", "empty", !loaded ? "Loading comments…" : loadError ? "Comments could not be loaded." : "No comments yet."));
+    if (!shown.length) list.appendChild(el("li", "empty", !D.loaded ? "Loading comments…" : D.error ? "Comments could not be loaded." : "No comments yet."));
     shown.forEach(function (c) {
-      var li = el("li", (c.resolved ? "resolved" : "") + (c.id === active ? " active" : ""));
-      li.dataset.id = c.id;
-      var head = el("div", "lb-comment-head");
-      head.appendChild(el("span", "num", (c.x != null ? "● " : "") + "#" + c.number + (c.version !== version ? " · v" + c.version : "")));
-      head.appendChild(el("time", "", new Date(c.at).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" })));
-      var done = el("label", "done");
-      var check = el("input");
-      check.type = "checkbox";
-      check.checked = c.resolved;
-      check.setAttribute("aria-label", "Mark #" + c.number + " done");
-      check.addEventListener("change", function () {
-        status.textContent = "";
-        post(api + "/resolve", { ids: [c.id], resolved: check.checked })
-          .then(load, function (err) { showError(err); render(); })
-          .then(function () { // the list was drawn anew; keep the keyboard focus
-            if (document.activeElement && document.activeElement !== document.body) return;
-            [].slice.call(list.children).forEach(function (li) {
-              if (li.dataset.id === c.id) li.querySelector("input").focus();
-            });
-          });
-      });
-      done.appendChild(check);
-      done.appendChild(document.createTextNode(" done"));
-      head.appendChild(done);
-      li.appendChild(head);
-      li.appendChild(el("p", "", c.text));
-      li.addEventListener("mouseenter", function () { highlight(c.id, true); });
-      list.appendChild(li);
+      list.appendChild(D.item(c, {
+        label: (c.x != null ? "● " : "") + "#" + c.number + (c.version !== version ? " · v" + c.version : ""),
+        active: c.id === active, onError: showError,
+        onEnter: function () { highlight(c.id, true); },
+      }));
     });
     note.textContent = pending ? "Pin " + nextNumber() + " placed" : "";
-    send.disabled = busy || !loaded;
+    send.disabled = busy || !D.loaded;
   }
   function render() { renderPins(); renderList(); }
   // Highlighting only toggles classes, so elements under the pointer stay.
@@ -153,7 +83,56 @@
       if (li) li.scrollIntoView({ block: "nearest" });
     }
   }
-  function showError(err) { status.textContent = err.message; }
+  function showError(err) { status.textContent = err ? err.message : ""; }
+
+  // Zoom: null fits the image into the viewer, a number scales its natural
+  // size. Pins sit in percent of the image, so they follow.
+  var zoom = null, fitted = 1, scroller = q(".lb-media"), zoomBar = q(".lb-zoom"), zoomLevel = q(".lb-zoom-level");
+  var STEPS = [0.5, 0.75, 1, 1.5, 2, 3, 4];
+  function image() {
+    var m = stage.firstElementChild;
+    return m && m.tagName === "IMG" && m.naturalWidth ? m : null;
+  }
+  // setZoom keeps the point under (cx, cy), or the middle of the view, in place.
+  function setZoom(z, cx, cy) {
+    var img = image();
+    if (!img) return;
+    var before = img.getBoundingClientRect(), view = scroller.getBoundingClientRect();
+    if (zoom === null) fitted = before.width / img.naturalWidth;
+    if (z !== null && z <= fitted * 1.01) z = null;
+    if (cx == null) { cx = view.left + view.width / 2; cy = view.top + view.height / 2; }
+    var fx = (cx - before.left) / before.width, fy = (cy - before.top) / before.height;
+    zoom = z;
+    stage.classList.toggle("zoomed", z !== null);
+    img.style.width = z === null ? "" : Math.round(img.naturalWidth * z) + "px";
+    zoomLevel.textContent = z === null ? "Fit" : Math.round(z * 100) + "%";
+    var after = img.getBoundingClientRect();
+    scroller.scrollLeft += after.left + fx * after.width - cx;
+    scroller.scrollTop += after.top + fy * after.height - cy;
+  }
+  function stepZoom(dir) {
+    var img = image();
+    if (!img) return;
+    var now = zoom === null ? img.getBoundingClientRect().width / img.naturalWidth : zoom;
+    var next = null;
+    STEPS.forEach(function (s) { // skip steps that would barely change the size
+      if (dir > 0 && s > now * 1.15 && next === null) next = s;
+      if (dir < 0 && s < now / 1.15) next = s;
+    });
+    if (next !== null) setZoom(next);
+    else if (dir < 0) setZoom(null);
+  }
+  q(".lb-zoom-in").addEventListener("click", function () { stepZoom(1); });
+  q(".lb-zoom-out").addEventListener("click", function () { stepZoom(-1); });
+  zoomLevel.addEventListener("click", function () { setZoom(zoom === null ? 1 : null); });
+  // Ctrl/⌘ + wheel, and pinching on a trackpad, zoom smoothly at the pointer.
+  scroller.addEventListener("wheel", function (e) {
+    var img = image();
+    if (!(e.ctrlKey || e.metaKey) || !img) return;
+    e.preventDefault();
+    var now = zoom === null ? img.getBoundingClientRect().width / img.naturalWidth : zoom;
+    setZoom(Math.min(4, now * Math.exp(-e.deltaY * 0.002)), e.clientX, e.clientY);
+  }, { passive: false });
 
   function show(n) {
     if (box.open) drafts[items[current].id] = { text: text.value, pending: pending };
@@ -172,14 +151,21 @@
       });
     }
     stage.replaceChildren(media);
-    q(".lb-media").scrollTop = 0;
+    zoom = null;
+    stage.classList.remove("zoomed");
+    zoomLevel.textContent = "Fit";
+    zoomBar.hidden = !!f.dataset.video;
+    scroller.scrollTop = 0;
     var draft = drafts[f.id] || {};
     text.value = draft.text || "";
     pending = draft.pending || null;
     active = "";
-    status.textContent = loadError;
+    status.textContent = D.error;
     name.textContent = f.dataset.name;
     meta.textContent = [f.dataset.section, f.dataset.row, f.dataset.col].filter(Boolean).join(" · ");
+    caption.hidden = !f.dataset.title;
+    caption.firstChild.textContent = f.dataset.title || "";
+    caption.lastChild.textContent = f.dataset.text || "";
     count.textContent = current + 1 + " / " + items.length;
     original.href = href(f);
     history.replaceState(null, "", "#" + encodeURIComponent(f.id));
@@ -194,13 +180,13 @@
   form.addEventListener("submit", function (e) {
     e.preventDefault();
     var path = items[current].id, sent = text.value.trim();
-    if (!sent || busy || !loaded) return;
+    if (!sent || busy || !D.loaded) return;
     var body = { path: path, version: version, text: sent };
     if (pending) { body.x = pending.x; body.y = pending.y; }
     busy = true;
     send.disabled = true;
     status.textContent = "";
-    post(api, body).then(function () {
+    D.post("", body).then(function () {
       // Clear only what was sent: the viewer may show another file or be
       // closed by now.
       if (box.open && items[current].id === path && text.value.trim() === sent) {
@@ -208,10 +194,10 @@
         pending = null;
       }
       if (drafts[path] && drafts[path].text.trim() === sent) delete drafts[path];
-      return load();
+      return D.load();
     }, showError).then(function () {
       busy = false;
-      send.disabled = !loaded;
+      send.disabled = !D.loaded;
     });
   });
   items.forEach(function (f, n) {
@@ -232,6 +218,17 @@
       if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); form.requestSubmit(); }
       return;
     }
+    if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+      if (e.key === "+" || e.key === "=") { stepZoom(1); e.preventDefault(); }
+      if (e.key === "-") { stepZoom(-1); e.preventDefault(); }
+      if (e.key === "0") { setZoom(zoom === null ? 1 : null); e.preventDefault(); }
+    }
+    // Zoomed in, the arrow keys move across the image instead of to the next one.
+    if (zoom !== null && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+      scroller.scrollLeft += e.key === "ArrowLeft" ? -80 : 80;
+      e.preventDefault();
+      return;
+    }
     if (e.key === "ArrowLeft") { show(current - 1); e.preventDefault(); }
     if (e.key === "ArrowRight") { show(current + 1); e.preventDefault(); }
   });
@@ -249,7 +246,7 @@
   var start = null;
   stage.addEventListener("touchstart", function (e) { start = e.touches.length === 1 ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : null; }, { passive: true });
   stage.addEventListener("touchend", function (e) {
-    if (start === null) return;
+    if (start === null || zoom !== null) return;
     var dx = e.changedTouches[0].clientX - start.x, dy = e.changedTouches[0].clientY - start.y;
     start = null;
     if (Math.abs(dx) > 60 && Math.abs(dx) > 2 * Math.abs(dy)) show(current + (dx < 0 ? 1 : -1));
@@ -259,5 +256,4 @@
   for (var i = 0; target && i < items.length; i++) {
     if (items[i].id === target) { open(i); break; }
   }
-  load();
 })();

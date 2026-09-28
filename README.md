@@ -82,17 +82,19 @@ tokens or passwords are refused unless you pass `--allow-sensitive`.
 
 `dev shot [LABEL=]URL... --out DIR` takes the screenshots for such a gallery
 with a local headless Chrome or Chromium: one PNG per theme and width
-(`LABEL-dark-1440.png`), with session cookies read from files, and optional
-clicks or hovers before the capture.
+(`LABEL-light-1440.png`; light only unless you add `--themes light,dark`), with
+session cookies read from files, and optional clicks or hovers before the
+capture.
 
 ```sh
 dev shot login=https://app.dev.example.com/login --out shots \
-  --themes light,dark --widths 1440,390 --cookie session=@~/.cache/app.cookie
+  --widths 1440,390 --cookie session=@~/.cache/app.cookie
 dev publish shots --project app --name login-states
 ```
 
 To give feedback, click an image in the viewer to pin a numbered comment to
-that spot, or just type a comment. Agents read it with
+that spot, select text in a plan and comment on it, or open a mockup's review
+page and pin a comment to an element inside it. Agents read it with
 `dev comments app/login-states`, and `--images DIR` writes copies of the
 images with the numbered pins drawn in. Comments need the small background
 service `dev daemon` ([user unit](examples/devstation-daemon.service)).

@@ -139,6 +139,11 @@ func (s Store) Publish(o Options) (Result, error) {
 			return r, err
 		}
 	}
+	if reviewable(v) {
+		if err = s.writeReview(m, v.N); err != nil {
+			return r, err
+		}
+	}
 	if err = s.writeMeta(m); err != nil {
 		return r, err
 	}
@@ -215,6 +220,9 @@ func (s Store) writeCurrent(m Meta, ds docSet) error {
 		target := fmt.Sprintf("./v/%d/", v.N)
 		if v.Entry != "index.html" {
 			target += escapePath(v.Entry)
+		}
+		if reviewable(v) { // mockups open where they can be commented
+			target = fmt.Sprintf("./review/%d/", v.N)
 		}
 		page, err = renderRedirect(heading(m), target)
 	} else {

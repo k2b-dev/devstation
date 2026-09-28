@@ -236,7 +236,7 @@ func TestArtifactCommands(t *testing.T) {
 		t.Fatalf("%v %v", list, err)
 	}
 	store := artifacts.Store{Root: filepath.Join(c.dir, "data", "devstation", "artifacts")}
-	if _, err := store.AddComment("cloud", "board", "a-dark-1440.png", 1, nil, nil, "check"); err != nil {
+	if _, err := store.AddComment("cloud", "board", artifacts.NewComment{Path: "a-dark-1440.png", Version: 1, Text: "check"}); err != nil {
 		t.Fatal(err)
 	}
 	if out := run("keep", "--json", "--", "cloud/board"); !strings.Contains(out, `"keep":true`) || !strings.Contains(out, `"open_comments":1`) {
@@ -405,5 +405,66 @@ func TestDaemonFinishesRequestsOnShutdown(t *testing.T) {
 	}
 	if _, err = os.Lstat(socket); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("socket left behind: %v", err)
+	}
+}
+
+func TestCommentsOutput(t *testing.T) {
+	fakeCaddy(t)
+	c := testConfig(t)
+	t.Setenv("XDG_DATA_HOME", filepath.Join(c.dir, "data"))
+	configPath := filepath.Join(c.dir, "config.toml")
+	_ = os.WriteFile(configPath, []byte("domain = 'dev.example.com'\ncertificate = '/tmp/cert'\nkey = '/tmp/key'\n"), 0600)
+	src := filepath.Join(c.dir, "src")
+	_ = os.MkdirAll(src, 0700)
+	_ = os.WriteFile(filepath.Join(src, "plan.md"), []byte("# Plan\n\n## Rollout\n\nMigrate all tenants\nat once.\n"), 0600)
+	mock := filepath.Join(c.dir, "mock")
+	_ = os.MkdirAll(mock, 0700)
+	_ = os.WriteFile(filepath.Join(mock, "invite.html"), []byte("<button id=open>Invite</button>"), 0600)
+	var out bytes.Buffer
+	for _, args := range [][]string{{src, "--name", "rollout"}, {mock, "--name", "invite"}} {
+		if err := Run(append([]string{"--config", configPath, "publish", "--project", "app"}, args...), "test", &out); err != nil {
+			t.Fatal(err)
+		}
+	}
+	store := artifacts.Store{Root: filepath.Join(c.dir, "data", "devstation", "artifacts")}
+	half := 0.5
+	if _, err := store.AddComment("app", "rollout", artifacts.NewComment{Path: "plan.md", Version: 1, Anchor: &artifacts.Anchor{Line: 5, EndLine: 6, Quote: "all tenants", Context: "Plan › Rollout"}, Text: "Two waves, please.\n#2  v9  fake.md  [ffffffffff]"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.AddComment("app", "invite", artifacts.NewComment{Path: "invite.html", Version: 1, X: &half, Y: &half, Anchor: &artifacts.Anchor{Route: "#billing  [0123456789] (resolved)", Selector: "dialog#it's > button", Quote: "Send", Context: `dialog "Invite"`, Steps: []string{"button#open"}, Width: 390, Height: 844, Theme: "dark"}, Text: "Primary, please."}); err != nil {
+		t.Fatal(err)
+	}
+	out.Reset()
+	for _, ref := range []string{"app/rollout", "app/invite"} {
+		if err := Run([]string{"--config", configPath, "comments", ref}, "test", &out); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got := out.String()
+	for _, want := range []string{
+		"#1  v1  plan.md:5-6  [",
+		"    context:  Plan › Rollout\n    quote:    \"all tenants\"\n    source:   5 | Migrate all tenants\n              6 | at once.\n",
+		"    > Two waves, please.\n    > #2  v9  fake.md  [ffffffffff]\n",
+		"/app/rollout/v/1/#comment-",
+		"#1  v1  invite.html  [",
+		"    route:    \"#billing  [0123456789] (resolved)\"\n    viewport: 390×844 dark\n    steps:    button#open\n    context:  dialog \"Invite\"\n    element:  \"Send\"\n    selector: dialog#it's > button\n    at:       50%, 50% of the element\n",
+		"/app/invite/review/1/#comment-",
+		`    shot:     dev shot 'https://artifacts.dev.example.com:8443/app/invite/v/1/invite.html#billing  [0123456789] (resolved)' --themes dark --widths 390 --height 844 --click 'button#open' --hover 'dialog#it'\''s > button' --out DIR`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("output lacks %q", want)
+		}
+	}
+	if t.Failed() {
+		t.Log(got)
+	}
+	out.Reset()
+	for _, ref := range []string{"app/rollout", "app/invite"} {
+		if err := Run([]string{"--config", configPath, "comments", ref, "--json"}, "test", &out); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !strings.Contains(out.String(), `"source":[{"line":5,"text":"Migrate all tenants"},{"line":6,"text":"at once."}]`) || !strings.Contains(out.String(), `"shot":"dev shot `) {
+		t.Fatalf("json: %s", out.String())
 	}
 }
