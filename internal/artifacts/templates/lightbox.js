@@ -125,14 +125,38 @@
   q(".lb-zoom-in").addEventListener("click", function () { stepZoom(1); });
   q(".lb-zoom-out").addEventListener("click", function () { stepZoom(-1); });
   zoomLevel.addEventListener("click", function () { setZoom(zoom === null ? 1 : null); });
-  // Ctrl/⌘ + wheel, and pinching on a trackpad, zoom smoothly at the pointer.
+  // Ctrl/⌘/⌥ + wheel, and pinching on a trackpad, zoom smoothly at the pointer.
   scroller.addEventListener("wheel", function (e) {
     var img = image();
-    if (!(e.ctrlKey || e.metaKey) || !img) return;
+    if (!(e.ctrlKey || e.metaKey || e.altKey) || !img) return;
     e.preventDefault();
     var now = zoom === null ? img.getBoundingClientRect().width / img.naturalWidth : zoom;
     setZoom(Math.min(4, now * Math.exp(-e.deltaY * 0.002)), e.clientX, e.clientY);
   }, { passive: false });
+
+  // Holding ⌥ turns the pointer into a hand: dragging moves the zoomed image,
+  // and a click does not place a pin.
+  var drag = null;
+  function hand(on) { stage.classList.toggle("hand", on); }
+  document.addEventListener("keydown", function (e) { if (e.key === "Alt" && box.open) hand(true); });
+  document.addEventListener("keyup", function (e) { if (e.key === "Alt") hand(false); });
+  window.addEventListener("blur", function () { hand(false); });
+  stage.addEventListener("pointermove", function (e) {
+    hand(e.altKey || !!drag);
+    if (!drag) return;
+    scroller.scrollLeft = drag.left - (e.clientX - drag.x);
+    scroller.scrollTop = drag.top - (e.clientY - drag.y);
+  });
+  stage.addEventListener("pointerdown", function (e) {
+    if (!e.altKey || !image()) return;
+    e.preventDefault();
+    drag = { x: e.clientX, y: e.clientY, left: scroller.scrollLeft, top: scroller.scrollTop };
+    stage.setPointerCapture(e.pointerId);
+    stage.classList.add("dragging");
+  });
+  function endDrag() { drag = null; stage.classList.remove("dragging"); }
+  stage.addEventListener("pointerup", endDrag);
+  stage.addEventListener("pointercancel", endDrag);
 
   function show(n) {
     if (box.open) drafts[items[current].id] = { text: text.value, pending: pending };
@@ -143,7 +167,9 @@
     if (f.dataset.video) { media.controls = true; media.muted = true; media.loop = true; media.autoplay = true; media.playsInline = true; }
     else {
       media.alt = f.dataset.name;
+      media.draggable = false; // the browser's own image dragging would fight the pointer
       media.addEventListener("click", function (e) {
+        if (e.altKey) return;
         var r = media.getBoundingClientRect();
         pending = { x: Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), y: Math.min(1, Math.max(0, (e.clientY - r.top) / r.height)) };
         render();

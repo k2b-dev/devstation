@@ -78,7 +78,11 @@ html:has(.lightbox[open]){overflow:hidden}
 .lb-media{display:flex;overflow:auto;padding:0 4rem 1rem;min-height:0}
 .lb-stage{position:relative;margin:auto;max-width:100%}
 .lb-stage>img,.lb-stage>video{display:block;max-width:100%;height:auto}
-.lb-stage>img{cursor:crosshair}
+/* The whole stage shows the crosshair, so the cursor does not change at the image's edges. */
+.lb-stage:has(>img){cursor:crosshair}
+.lb-stage>img{user-select:none;-webkit-user-select:none;-webkit-user-drag:none}
+.lb-stage.hand,.lb-stage.hand>img{cursor:grab}
+.lb-stage.dragging,.lb-stage.dragging>img{cursor:grabbing}
 .lb-stage.zoomed{max-width:none}
 .lb-stage.zoomed>img{max-width:none}
 /* The circle sits up and to the right of the commented spot, marked by a dot (::before). */
@@ -185,8 +189,8 @@ html.cp-open body{padding-right:22rem}
 .c-chip::after{content:attr(data-n)}
 .c-chip.resolved{background:#6b7280}
 .c-chip.active{box-shadow:0 0 0 2px var(--panel),0 0 0 4px var(--accent)}
-pre[data-line]{position:relative}
-pre>.c-chip{position:absolute;top:.4rem;right:.4rem;margin:0}
+.c-chips{position:relative;z-index:1;display:flex;justify-content:flex-end;gap:.3rem;height:0;padding-right:.6rem}
+.c-chips .c-chip{margin:0;transform:translateY(-50%)}
 ::highlight(dev-comment){background-color:rgb(255 196 0/.3)}
 ::highlight(dev-comment-active){background-color:rgb(255 166 0/.6)}
 ::highlight(dev-pending){background-color:rgb(80 140 255/.32)}

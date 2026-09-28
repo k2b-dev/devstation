@@ -185,9 +185,10 @@ Pages are generated from the files:
   next to `x.png`, is linked from that image. Clicking an image opens a viewer
   on the page with its name, row, and column; the arrow keys or a swipe move
   to the neighbors, Escape closes it, and the address carries the image anchor.
-  − and + (also the keys, and Ctrl/⌘ with the wheel or a trackpad pinch at the
-  pointer) zoom from the fitted size up to 400 %; `0` or the level button
-  switches between fitted and 100 %.
+  − and + (also the keys, and Ctrl/⌘/⌥ with the wheel or a trackpad pinch at
+  the pointer) zoom from the fitted size up to 400 %; `0` or the level button
+  switches between fitted and 100 %. Holding ⌥ (Alt) and dragging moves the
+  zoomed image.
 - **Captions:** a `captions.txt` in a folder of images gives its rows (or other
   images, by name without extension) a short title and at most a sentence.
   The title shows next to the row (the sentence as its tooltip); the viewer
