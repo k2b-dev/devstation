@@ -57,7 +57,7 @@
   // Chips at the end of commented blocks; the number comes from CSS, so it
   // never ends up in a selection or quote.
   function drawChips() {
-    document.querySelectorAll(".c-chip").forEach(function (c) { c.remove(); });
+    document.querySelectorAll(".c-chip, .c-chips").forEach(function (c) { c.remove(); });
     D.comments.forEach(function (c) {
       var a = c.anchor, doc = document.getElementById(c.path);
       if (!mine(c) || !a || !a.line || !doc) return;
@@ -70,7 +70,13 @@
       chip.setAttribute("aria-label", "Comment " + c.number);
       chip.addEventListener("click", function () { P.open(false); P.activate(c.id); });
       var host = b.tagName === "TR" || b.tagName === "THEAD" ? b.querySelector("tr > :last-child") || b : b;
-      if (host.tagName === "PRE") chip.style.right = 0.4 + 1.9 * host.querySelectorAll(".c-chip").length + "rem"; // side by side
+      if (host.tagName === "PRE") {
+        // On the code block's top edge, outside the part that scrolls sideways.
+        var row = host.previousElementSibling;
+        if (!row || !row.classList.contains("c-chips")) { row = D.el("div", "c-chips"); host.parentNode.insertBefore(row, host); }
+        row.appendChild(chip);
+        return;
+      }
       // In a list item, the chip follows the item's own text, before any sublist.
       host.insertBefore(chip, host.tagName === "LI" ? host.querySelector(":scope > ul, :scope > ol") : null);
     });

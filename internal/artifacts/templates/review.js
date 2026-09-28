@@ -189,7 +189,7 @@
     attach();
     steps = [];
     pending = null;
-    setMode(false);
+    mode = false;
     follow();
   }
   // follow shows the page and route in the frame; a route change keeps the
@@ -198,7 +198,7 @@
     page = locate();
     label.textContent = page ? page.path + page.route : "";
     if (page) history.replaceState(null, "", "#" + encodeURIComponent(page.path + page.route));
-    else setMode(false);
+    setMode(mode); // also sets the status line for the page now shown
     P.update();
     drawPins();
     var c = D.comments.filter(function (c) { return c.id === P.active; })[0];
