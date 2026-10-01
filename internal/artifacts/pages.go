@@ -23,6 +23,7 @@ var pages = template.Must(template.New("").Funcs(template.FuncMap{
 	"plan":     func() template.JS { return template.JS(mustRead("templates/plan.js")) },
 	"review":   func() template.JS { return template.JS(mustRead("templates/review.js")) },
 	"theme":    func() template.JS { return template.JS(mustRead("templates/theme.js")) },
+	"table":    func() template.JS { return template.JS(mustRead("templates/table.js")) },
 }).ParseFS(templateFS, "templates/pages.html"))
 
 func mustRead(name string) string {
@@ -347,7 +348,8 @@ func renderCompare(m Meta, a, b int) ([]byte, error) {
 type card struct {
 	Href, Heading, Name, Summary, Size, Link string
 	Versions                                 int
-	Updated                                  time.Time
+	Bytes                                    int64
+	Created, Updated                         time.Time
 	Life                                     life
 }
 
@@ -363,9 +365,10 @@ func renderProject(p string, metas []Meta) ([]byte, error) {
 		v := m.latest()
 		page.Cards = append(page.Cards, card{
 			Href: "./" + m.Name + "/", Heading: heading(m), Name: m.Name, Summary: summary(v),
-			Size: humanSize(v.Bytes), Link: m.Link, Versions: v.N, Updated: m.Updated, Life: life{m.Keep, m.Expires()},
+			Size: humanSize(v.Bytes), Bytes: v.Bytes, Link: m.Link, Versions: v.N, Created: m.Created, Updated: m.Updated, Life: life{m.Keep, m.Expires()},
 		})
 	}
+	sort.SliceStable(page.Cards, func(i, j int) bool { return page.Cards[i].Updated.After(page.Cards[j].Updated) })
 	var buf bytes.Buffer
 	err := pages.ExecuteTemplate(&buf, "project", page)
 	return buf.Bytes(), err
