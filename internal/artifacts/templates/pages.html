@@ -148,11 +148,30 @@
 
 {{define "project"}}{{template "head" .}}
 <section class="intro"><h1>{{.Project}}</h1></section>
-{{if .Cards}}<ul class="cards">{{range .Cards}}<li class="card">
-<a class="title" href="{{.Href}}">{{.Heading}}</a>
-<p class="meta"><span>{{.Name}}</span><span>v{{.Versions}}</span><span>{{.Summary}}</span><span>{{.Size}}</span></p>
-<p class="meta"><span>updated {{template "time" .Updated}}</span><span>{{template "lifecycle" .Life}}</span>{{if .Link}}<span><a href="{{.Link}}" rel="noreferrer">{{.Link}}</a></span>{{end}}</p>
-</li>{{end}}</ul>{{else}}<p class="muted">No artifacts in this project.</p>{{end}}
+{{if .Cards}}<div class="tbar"><input type="search" class="tsearch" placeholder="Search {{len .Cards}} artifacts" aria-label="Search artifacts" aria-controls="artifact-table"><span class="tcount muted" role="status" aria-live="polite"></span></div>
+<div class="twrap"><table id="artifact-table" class="atable">
+<thead><tr>
+<th scope="col" data-key="title" data-type="text">Title</th>
+<th scope="col" data-key="name" data-type="text">Name</th>
+<th scope="col" data-key="versions" data-type="num" class="num">Ver.</th>
+<th scope="col">Content</th>
+<th scope="col" data-key="size" data-type="num" class="num">Size</th>
+<th scope="col" data-key="created" data-type="num">Created</th>
+<th scope="col" data-key="updated" data-type="num" aria-sort="descending">Updated</th>
+<th scope="col">Lifecycle</th>
+</tr></thead>
+<tbody>{{range .Cards}}<tr data-title="{{.Heading}}" data-name="{{.Name}}" data-versions="{{.Versions}}" data-size="{{.Bytes}}" data-created="{{.Created.Unix}}" data-updated="{{.Updated.Unix}}">
+<td class="ttitle"><a href="{{.Href}}">{{.Heading}}</a>{{if .Link}} <a class="muted tlink" href="{{.Link}}" rel="noreferrer" title="{{.Link}}">link ↗</a>{{end}}</td>
+<td class="muted">{{.Name}}</td>
+<td class="num">v{{.Versions}}</td>
+<td class="muted">{{.Summary}}</td>
+<td class="num muted">{{.Size}}</td>
+<td class="muted">{{template "time" .Created}}</td>
+<td>{{template "time" .Updated}}</td>
+<td>{{template "lifecycle" .Life}}</td>
+</tr>{{end}}</tbody></table></div>
+<p class="tempty muted" hidden>No artifact matches.</p>
+<script>{{table}}</script>{{else}}<p class="muted">No artifacts in this project.</p>{{end}}
 {{template "foot" .}}{{end}}
 
 {{define "root"}}{{template "head" .}}

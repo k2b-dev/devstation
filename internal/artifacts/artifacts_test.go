@@ -638,3 +638,26 @@ func TestNaturalLess(t *testing.T) {
 		t.Fatal("natural order")
 	}
 }
+
+func TestProjectTable(t *testing.T) {
+	old, mid, last := time.Date(2026, 9, 1, 8, 0, 0, 0, time.UTC), time.Date(2026, 9, 2, 8, 0, 0, 0, time.UTC), time.Date(2026, 9, 3, 8, 0, 0, 0, time.UTC)
+	metas := []Meta{
+		{Name: "alpha", Title: "Alpha", Created: old, Updated: mid, Versions: []Version{{N: 1, Bytes: 10}}},
+		{Name: "beta", Title: "<Beta>", Created: old, Updated: last, Versions: []Version{{N: 2, Bytes: 2048}}},
+		{Name: "gamma", Created: mid, Updated: old, Versions: []Version{{N: 1, Bytes: 1}}},
+	}
+	out, err := renderProject("p", metas)
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := string(out)
+	b, a, g := strings.Index(page, `data-name="beta"`), strings.Index(page, `data-name="alpha"`), strings.Index(page, `data-name="gamma"`)
+	if b < 0 || a < b || g < a {
+		t.Fatal("rows are not sorted by last update, newest first")
+	}
+	for _, want := range []string{`id="artifact-table"`, `data-key="updated" data-type="num" aria-sort="descending"`, `data-created="` + fmt.Sprint(old.Unix()) + `"`, `data-size="2048"`, `class="tsearch"`, "&lt;Beta&gt;", "artifact-table"} {
+		if !strings.Contains(page, want) {
+			t.Fatalf("project page lacks %s", want)
+		}
+	}
+}
