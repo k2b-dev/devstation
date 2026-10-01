@@ -27,6 +27,12 @@ func runDaemon(c Config, args []string, out io.Writer) error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	// A restart follows every update, so this is where overviews pick up new templates.
+	if store, _, _, err := artifactStore(c); err == nil {
+		if err = store.RebuildIndexes(); err != nil {
+			fmt.Fprintf(out, "dev daemon: rebuilding overviews: %v\n", err)
+		}
+	}
 	return serveDaemon(ctx, daemonHandler(c), daemonSocket(c.dir), out)
 }
 

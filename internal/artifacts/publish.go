@@ -445,3 +445,19 @@ func CompareURL(base string, m Meta) string {
 
 // Summary is the one-line description used in listings.
 func Summary(m Meta) string { return summary(m.latest()) }
+
+// RebuildIndexes rewrites the root and every project overview with the
+// current templates, so a new release changes existing pages without a
+// publish.
+func (s Store) RebuildIndexes() error {
+	unlock, err := s.lock()
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	projects, err := s.projects()
+	if err != nil {
+		return err
+	}
+	return s.writeIndexes(projects...)
+}

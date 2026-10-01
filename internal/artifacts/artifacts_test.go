@@ -661,3 +661,20 @@ func TestProjectTable(t *testing.T) {
 		}
 	}
 }
+
+func TestRebuildIndexes(t *testing.T) {
+	s, _ := testStore(t)
+	src := t.TempDir()
+	write(t, filepath.Join(src, "a.png"), pngBytes(t, 4, 4, 1))
+	if _, err := s.Publish(Options{Project: "p", Name: "one", Paths: []string{src}}); err != nil {
+		t.Fatal(err)
+	}
+	index := filepath.Join(s.project("p"), "index.html")
+	write(t, index, []byte("old cards"))
+	if err := s.RebuildIndexes(); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(read(t, index), `id="artifact-table"`) {
+		t.Fatal("project overview was not rebuilt")
+	}
+}
