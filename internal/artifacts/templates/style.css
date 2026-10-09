@@ -54,8 +54,9 @@ figcaption .name{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
 .slider label{display:flex;align-items:center;gap:.6rem;font-size:.85rem;margin-bottom:.4rem}
 .slider input{flex:1}
 .slider .stack{position:relative;display:inline-block;max-width:100%}
-.slider img{display:block;max-width:100%;height:auto;border-radius:var(--radius)}
-.slider .after{position:absolute;inset:0;clip-path:inset(0 0 0 var(--pos))}
+.slider img{display:block;max-width:100%;max-height:85vh;width:auto;height:auto;border-radius:var(--radius)}
+/* Explicit size: Safari otherwise sizes the absolutely positioned overlay from its width attribute, so the halves no longer line up. */
+.slider .after{position:absolute;inset:0;width:100%;height:100%;max-height:none;clip-path:inset(0 0 0 var(--pos))}
 .lightbox{width:100%;height:100vh;height:100dvh;max-width:none;max-height:none;margin:0;padding:0;border:0;background:#0b0d11;color:#e6e8ec;color-scheme:dark;overflow:hidden}
 html:has(.lightbox[open]){overflow:hidden}
 .lightbox::backdrop{background:rgb(10 12 16/.6)}
