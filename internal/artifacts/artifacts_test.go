@@ -669,12 +669,21 @@ func TestRebuildIndexes(t *testing.T) {
 	if _, err := s.Publish(Options{Project: "p", Name: "one", Paths: []string{src}}); err != nil {
 		t.Fatal(err)
 	}
+	write(t, filepath.Join(src, "a.png"), pngBytes(t, 4, 4, 2))
+	if _, err := s.Publish(Options{Project: "p", Name: "one", Paths: []string{src}}); err != nil {
+		t.Fatal(err)
+	}
 	index := filepath.Join(s.project("p"), "index.html")
+	compare := filepath.Join(s.artifact("p", "one"), "compare", "1-2", "index.html")
 	write(t, index, []byte("old cards"))
+	write(t, compare, []byte("old compare"))
 	if err := s.RebuildIndexes(); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(read(t, index), `id="artifact-table"`) {
 		t.Fatal("project overview was not rebuilt")
+	}
+	if !strings.Contains(read(t, compare), `class="slider"`) {
+		t.Fatal("compare page was not rebuilt")
 	}
 }
