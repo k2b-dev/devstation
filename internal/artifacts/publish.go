@@ -446,9 +446,9 @@ func CompareURL(base string, m Meta) string {
 // Summary is the one-line description used in listings.
 func Summary(m Meta) string { return summary(m.latest()) }
 
-// RebuildIndexes rewrites the root and every project overview with the
-// current templates, so a new release changes existing pages without a
-// publish.
+// RebuildIndexes rewrites the root, every project overview and every
+// compare page with the current templates, so a new release changes existing
+// pages without a publish.
 func (s Store) RebuildIndexes() error {
 	unlock, err := s.lock()
 	if err != nil {
@@ -459,5 +459,36 @@ func (s Store) RebuildIndexes() error {
 	if err != nil {
 		return err
 	}
+	for _, p := range projects {
+		metas, _, _, err := s.projectMetas(p)
+		if err != nil {
+			return err
+		}
+		for _, m := range metas {
+			if err = s.rewriteCompares(m); err != nil {
+				return err
+			}
+		}
+	}
 	return s.writeIndexes(projects...)
+}
+
+// rewriteCompares re-renders the compare pages that already exist between
+// consecutive versions.
+func (s Store) rewriteCompares(m Meta) error {
+	for i := 1; i < len(m.Versions); i++ {
+		a, b := m.Versions[i-1].N, m.Versions[i].N
+		path := filepath.Join(s.artifact(m.Project, m.Name), "compare", fmt.Sprintf("%d-%d", a, b), "index.html")
+		if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		page, err := renderCompare(m, a, b)
+		if err != nil {
+			return err
+		}
+		if err = writeFileAtomic(path, page); err != nil {
+			return err
+		}
+	}
+	return nil
 }
