@@ -39,3 +39,25 @@ func TestSourceLineStamps(t *testing.T) {
 		t.Errorf("stamped despite a count mismatch: %s", got)
 	}
 }
+
+func TestTOCOnlyForLongDocuments(t *testing.T) {
+	render := func(src string) string {
+		out, _, _ := renderDocs([]parsedDocInput{{"plan.md", []byte(src)}}, "./", map[string]bool{"plan.md": true})
+		return out[0]
+	}
+	short := render("# Plan\n\n## One\n\n## Two\n\n## Three\n\n### Not counted\n")
+	if strings.Contains(short, `class="toc"`) {
+		t.Fatalf("short document got a table of contents:\n%s", short)
+	}
+	long := render("# Plan\n\n## One\n\n## Two\n\n## Three\n\n## Risks & \"limits\"\n\n### Not listed\n")
+	want := `<nav class="toc" aria-label="Contents"><ul><li><a href="#one">One</a></li><li><a href="#two">Two</a></li><li><a href="#three">Three</a></li><li><a href="#risks--limits">Risks &amp; &#34;limits&#34;</a></li></ul></nav>`
+	if !strings.HasPrefix(long, `<h1 id="plan" data-line="1-1">Plan</h1>`+"\n"+want) {
+		t.Fatalf("table of contents after the title:\n got %s\nwant %s", long, want)
+	}
+	if untitled := render("## One\n\n## Two\n\n## Three\n\n## Four\n"); !strings.HasPrefix(untitled, `<nav class="toc"`) {
+		t.Fatalf("document without title: %s", untitled)
+	}
+	if strings.Contains(long[:strings.Index(long, "</nav>")], "Not listed") {
+		t.Fatal("third-level heading listed")
+	}
+}

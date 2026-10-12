@@ -3,6 +3,7 @@ package artifacts
 import (
 	"bytes"
 	"fmt"
+	"html"
 	"net/url"
 	"path"
 	"sort"
@@ -182,9 +183,46 @@ func renderDocs(docs []parsedDocInput, base string, published map[string]bool) (
 		if err := md.Renderer().Render(&buf, d.src, d.root); err != nil {
 			warnings = append(warnings, fmt.Sprintf("%s: %v", d.path, err))
 		}
-		out = append(out, stampCode(buf.String(), d.code))
+		out = append(out, withTOC(stampCode(buf.String(), d.code), d.root, d.src))
 	}
 	return out, embedded, warnings
+}
+
+// tocMin is the number of second-level headings from which a document gets a
+// table of contents.
+const tocMin = 4
+
+// toc returns a list of links to the second-level headings of a long document,
+// or "" for a short one. Call it after the heading ids are assigned.
+func toc(root ast.Node, src []byte) string {
+	var b strings.Builder
+	n := 0
+	for c := root.FirstChild(); c != nil; c = c.NextSibling() {
+		h, ok := c.(*ast.Heading)
+		if !ok || h.Level != 2 {
+			continue
+		}
+		id, _ := h.AttributeString("id")
+		idb, _ := id.([]byte)
+		fmt.Fprintf(&b, `<li><a href="#%s">%s</a></li>`, html.EscapeString(url.PathEscape(string(idb))), html.EscapeString(plainText(h, src)))
+		n++
+	}
+	if n < tocMin {
+		return ""
+	}
+	return `<nav class="toc" aria-label="Contents"><ul>` + b.String() + "</ul></nav>\n"
+}
+
+// withTOC places the table of contents after a leading title, or first.
+func withTOC(rendered string, root ast.Node, src []byte) string {
+	t := toc(root, src)
+	if h, ok := root.FirstChild().(*ast.Heading); t != "" && ok && h.Level == 1 {
+		if i := strings.Index(rendered, "</h1>\n"); i >= 0 {
+			i += len("</h1>\n")
+			return rendered[:i] + t + rendered[i:]
+		}
+	}
+	return t + rendered
 }
 
 // stampLines marks paragraphs, headings, list items, and table rows with

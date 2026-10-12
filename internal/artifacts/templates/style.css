@@ -19,7 +19,22 @@ h2{font-size:1.05rem;margin:1.5rem 0 .6rem}
 .versions{font-size:.9rem;color:var(--muted)}
 .muted{color:var(--muted)}
 .badge{padding:.05rem .45rem;border-radius:1rem;box-shadow:var(--inset);font-size:.8rem}
-.doc{background:var(--panel);box-shadow:var(--inset);border-radius:var(--radius);padding:.5rem 1.5rem 1rem;margin:1rem 0;max-width:62rem}
+.doc{position:relative;background:var(--panel);box-shadow:var(--inset);border-radius:var(--radius);padding:.5rem 1.5rem 1rem;margin:1rem 0;max-width:calc(72ch + 3rem);font-size:1.07rem;line-height:1.65}
+/* Reading text: short lines, clear heading steps, air between list items. */
+.doc p{margin:.8rem 0}
+.doc li{margin:.3rem 0}
+.doc li>p{margin:.3rem 0}
+.doc :is(h1,h2,h3,h4){line-height:1.3;scroll-margin-top:1rem}
+.doc h1{font-size:1.6rem;margin:1rem 0 .8rem}
+.doc h2{font-size:1.3rem;margin:2.2rem 0 .7rem;padding-top:.9rem;border-top:1px solid rgb(127 127 127/.22)}
+.doc h3{font-size:1.12rem;margin:1.7rem 0 .5rem}
+.doc h4{font-size:1rem;margin:1.3rem 0 .4rem}
+.toc{margin:1rem 0 1.4rem;padding:.6rem 1rem;border-radius:.4rem;background:var(--bg);font-size:.92rem;line-height:1.45}
+.toc ul{margin:0;padding-left:1.1rem}
+.toc li{margin:.25rem 0}
+/* With room beside the text, the contents stay in view while scrolling. */
+main{container-type:inline-size}
+@container (min-width:66rem){.toc{position:absolute;top:0;bottom:0;left:calc(100% + 1.5rem);width:15rem;margin:0;padding:0;background:none}.toc ul{position:sticky;top:1rem;max-height:calc(100dvh - 2rem);overflow:auto;padding:.2rem 0 .2rem 1.1rem}}
 .doc .path{font:.85rem ui-monospace,SFMono-Regular,Menlo,monospace;margin:.6rem 0 0}
 .doc img{max-width:100%;height:auto}
 .doc table{display:block;overflow-x:auto;border-collapse:collapse}
