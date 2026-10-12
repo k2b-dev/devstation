@@ -110,6 +110,10 @@ Caddy here, not the user's DNS.
 - Artifacts expire 14 days after their last publish. Add `--keep` only when the
   user asks or the artifact documents a decision. Do not unpublish or keep
   other agents' artifacts unless asked.
+- For a Markdown plan, follow the reader's plan-writing skill or conventions
+  if one exists. Keep the decision version short and current; put details in a
+  second file. `README.md` and `index.md` render first, and a document with four
+  or more `##` headings gets a table of contents.
 - For a mockup, `url` opens its review page, where people comment inside it;
   `version_url` is the mockup itself. Take screenshots of `version_url`.
 - A folder with `index.html` or a single `.html` file is served unchanged, so

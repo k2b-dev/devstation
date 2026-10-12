@@ -201,7 +201,9 @@ Pages are generated from the files:
   task lists, and strikethrough work; raw HTML is dropped. Heading anchors
   follow GitHub's rules, including non-ASCII letters, and links such as
   `other.md#overview` land in that document's section. Relative links and images point into the version, and
-  images shown in Markdown are left out of the gallery.
+  images shown in Markdown are left out of the gallery. A document with four or
+  more `##` headings gets a table of contents after its title; on wide screens
+  it stays beside the text while scrolling.
 - **Site:** a top-level `index.html`, or a single file that is neither Markdown
   nor media, is served unchanged. The stable URL redirects to the latest
   version's copy, so HTML mockups keep their own scripts and relative assets.
